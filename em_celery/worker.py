@@ -14,17 +14,18 @@ app.autodiscover_tasks(['em_celery'], force=True)
 
 
 @worker_process_init.connect
-def _ensure_item_offers_product_indices_on_worker_fork(**kwargs):
-  """Once per forked worker process; indices used when saving item-offers stats via ProductService."""
+def _ensure_task_stats_indices_on_worker_fork(**kwargs):
+  """Once per forked worker process; ensure unified catalog/offer stats indices exist."""
   try:
     from em_celery import get_product_service
-    from em_tasks.tasks.spapi_update_item_offers_task import (
-        ensure_item_offers_product_indices,
-    )
+    from em_tasks.tasks.spapi_update_catalog_items_task import ensure_catalog_task_stats_index
+    from em_tasks.tasks.spapi_update_item_offers_task import ensure_item_offers_product_indices
 
-    ensure_item_offers_product_indices(get_product_service())
+    product_service = get_product_service()
+    ensure_catalog_task_stats_index(product_service)
+    ensure_item_offers_product_indices(product_service)
   except Exception:
-    logger.exception("ensure_item_offers_product_indices on worker_process_init failed")
+    logger.exception("ensure task stats indices on worker_process_init failed")
 
 
 if __name__ == '__main__':

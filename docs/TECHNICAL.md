@@ -61,7 +61,7 @@ flowchart TB
     end
 
     subgraph Storage["Elasticsearch"]
-        ES_CAT[(amz_products_api_*_v2<br/>amz_products_missing_*<br/>task_stats_*)]
+        ES_CAT[(amz_products_api_*_v2<br/>amz_products_missing_*<br/>spapi_item_catalog_task_stats)]
         ES_OFF[(lowest_offer_listings_*_*)]
     end
 
@@ -146,7 +146,7 @@ sequenceDiagram
     Task->>Task: SpapiCatalogItemsParser.parse()
     Task->>ES: bulk → amz_products_api_{mp}_v2
     Task->>ES: 缺失 ASIN → amz_products_missing_{mp}
-    Task->>ES: 分钟级统计 → task_stats_{mp}
+    Task->>ES: 分钟级统计 → spapi_item_catalog_task_stats
 ```
 
 ### 3.2 Offer（报价）流程
@@ -250,12 +250,13 @@ celery -A em_celery.worker worker \
 
 ```mermaid
 flowchart LR
-    A[worker_process_init] --> B[ensure_item_offers_product_indices]
-    B --> C[创建 spapi_item_offers_task_stats]
-    B --> D[创建 spapi_item_offers_missing_asins]
+    A[worker_process_init] --> B[ensure task stats indices]
+    B --> C[spapi_item_catalog_task_stats]
+    B --> D[spapi_item_offers_task_stats]
+    B --> E[spapi_item_offers_missing_asins]
 ```
 
-每个 fork 子进程执行一次（`em_celery/worker.py`）。当前 Offer 任务实现**未向**这两个索引写入数据，仅做索引预创建。
+每个 fork 子进程执行一次（`em_celery/worker.py`），预创建 Catalog/Offer 监控索引。Catalog 写入 `spapi_item_catalog_task_stats`；Offer 写入 `spapi_item_offers_task_stats`（均用 `marketplace` 字段区分站点）。
 
 ---
 
@@ -333,7 +334,7 @@ Sender 自动写入：
 2. `SpapiCatalogItemsParser.parse()` 解析标题、品牌、尺寸、类目、图片等
 3. `ProductService.save_products()` → `amz_products_api_{mp}_v2`
 4. 未返回的 ASIN → `amz_products_missing_{mp}`
-5. 按 worker + 分钟聚合运行指标 → `task_stats_{mp}`
+5. 按 worker + marketplace + 分钟聚合运行指标 → `spapi_item_catalog_task_stats`
 
 ### 6.3 `SpapiUpdateItemOffersTask`
 
@@ -418,9 +419,9 @@ Offer 任务在累计 250 次 `Reject` 后会发 Telegram 重置通知。
 |------|--------|----------|
 | `amz_products_api_{marketplace}_v2` | Catalog Task | 解析后的商品属性 + `time` |
 | `amz_products_missing_{marketplace}` | Catalog Task | SP-API 未返回的 ASIN |
-| `task_stats_{marketplace}` | Catalog Task | 每 worker 每分钟运行统计 |
+| `spapi_item_catalog_task_stats` | Catalog Task | 全部 marketplace 共用；`marketplace` 字段区分站点 |
 | `lowest_offer_listings_{marketplace}_{condition}` | Offer Task / EsOfferService | offer 列表 + `summary` + `time` |
-| `spapi_item_offers_task_stats` | Worker init 预创建 | 当前未写入 |
+| `spapi_item_offers_task_stats` | Offer Task | 全部 marketplace 共用；`marketplace` 字段区分站点 |
 | `spapi_item_offers_missing_asins` | Worker init 预创建 | 当前未写入 |
 
 ---

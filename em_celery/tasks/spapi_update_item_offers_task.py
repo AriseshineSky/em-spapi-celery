@@ -19,6 +19,7 @@ from celery.utils.log import get_task_logger
 
 from em_celery import sentry_enabled
 from em_celery.tasks.base import BaseTask
+from em_celery.tasks.worker_meta import build_worker_meta
 from em_celery.worker import app
 
 logger = get_task_logger(__name__)
@@ -32,6 +33,8 @@ def spapi_update_item_offers(self, marketplace, asins, condition='new', ttl=24, 
     marketplace,
     asins,
     condition,
+    product_service=self.product_service,
+    worker=build_worker_meta(self.request),
   )
   try:
     task.run()

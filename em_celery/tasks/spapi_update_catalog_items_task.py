@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import json
-import socket
 import os
 
 import sentry_sdk
@@ -20,18 +19,10 @@ from celery.utils.log import get_task_logger
 
 from em_celery import sentry_enabled
 from em_celery.tasks.base import BaseTask
+from em_celery.tasks.worker_meta import build_worker_meta
 from em_celery.worker import app
 
 logger = get_task_logger(__name__)
-
-def build_worker_meta(request):
-    node, host = request.hostname.split("@", 1)
-    return {
-        "worker_id": f"{node}@{host}",
-        "node": node,
-        "host": host,
-        "pid": os.getpid(),
-    }
 
 @app.task(base=BaseTask, bind=True, acks_late=True, rate_limit='1/s')
 def spapi_update_catalog_items(self, marketplace, asins, ttl=168, force=False, callback=None):
