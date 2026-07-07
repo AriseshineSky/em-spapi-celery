@@ -1,0 +1,51 @@
+# Byte-compiled / optimized  DLL files
+__pycache__/
+*.pyc
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.idea/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.cache
+*.cover
+*.coverage
+
+# pyenv / uv — .python-version is tracked at repo root
+
+# Environments
+.env
+.env.*
+config.ini
+*.local.ini
+.venv
+env/
+venv/
+ENV/
+*.xml
+
+*.log
+*.yml
+!local_dev/docker-compose.yml
+
+data/
+tmp/

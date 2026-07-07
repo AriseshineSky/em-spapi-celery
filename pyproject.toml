@@ -1,0 +1,51 @@
+[project]
+name = "em-spapi-celery"
+version = "0.1.0"
+description = "SP-API catalog and offer Celery workers and task senders"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "celery[redis]",
+    "click",
+    "python-dateutil",
+    "python-telegram-bot==12.8.0",
+    "urllib3<2",
+    "sentry-sdk",
+    "redis",
+    "PyPyDispatcher",
+    "pint",
+    "requests",
+    "dropshipping",
+    "cmutils",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+spapi_catalog_items_task_sender = "em_celery.tools.spapi_update_catalog_items_task_sender:send_spapi_catalog_items_update_task"
+spapi_catalog_items_task_send_from_es = "em_celery.tools.spapi_update_catalog_items_task_send_from_es:send_spapi_catalog_items_update_task"
+spapi_all_catalog_items_task_send_from_es = "em_celery.tools.spapi_update_all_catalog_items_task_send_from_es:send_spapi_catalog_items_update_task"
+spapi_item_offers_task_sender = "em_celery.tools.spapi_update_item_offers_task_sender:send_spapi_item_offers_update_task"
+spapi_item_offers_task_send_from_es = "em_celery.tools.spapi_update_item_offers_task_send_from_es:send_spapi_item_offers_update_task"
+spapi_all_item_offers_task_send_from_es = "em_celery.tools.spapi_update_all_item_offers_task_send_from_es:send_spapi_item_offers_update_task"
+spapi_fetch_item_offers_sync = "em_celery.tools.spapi_fetch_item_offers_sync:fetch_item_offers_sync"
+
+[tool.uv.sources]
+dropshipping = { path = "vendor/dropshipping", editable = true }
+cmutils = { path = "vendor/cmutils", editable = true }
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["em_celery*", "em_tasks*"]
+exclude = ["tests*", "vendor*", "local_dev*", "docs*"]
+
+[tool.setuptools.package-data]
+em_celery = ["VERSION"]
+em_tasks = ["VERSION"]

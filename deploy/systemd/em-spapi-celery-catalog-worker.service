@@ -1,0 +1,23 @@
+[Unit]
+Description=em-spapi-celery catalog worker (SP-API catalog consumer)
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=Admin
+Group=Admin
+WorkingDirectory=/home/Admin/em-spapi-celery
+EnvironmentFile=-/etc/conf.d/em_celery
+ExecStart=/home/Admin/em-spapi-celery/deploy/bin/run-worker.sh catalog
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=em-spapi-celery-catalog-worker
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

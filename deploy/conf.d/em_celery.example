@@ -1,0 +1,22 @@
+# /etc/conf.d/em_celery — systemd EnvironmentFile (legacy em-celery layout).
+# install.sh copies this to /etc/conf.d/em_celery on first deploy.
+# Worker queues/concurrency are read from here at each service start.
+
+EM_CELERY_CONFIGURATION_PATH=/home/Admin/.em_celery/config.ini
+EM_SPAPI_CELERY_LOG_TO_FILE=0
+EM_SPAPI_CELERY_LOG_LEVEL=INFO
+ENV=prod
+
+# Catalog worker (em-spapi-celery-catalog-worker)
+CELERY_CATALOG_QUEUES=SpapiCatalogItemsUpdate_US,SpapiCatalogItemsUpdate_UK
+CELERY_CATALOG_CONCURRENCY=2
+
+# Offer worker (em-spapi-celery-offer-worker)
+CELERY_OFFER_QUEUES=SpapiItemOffersUpdate_US,SpapiItemOffersUpdate_UK
+CELERY_OFFER_CONCURRENCY=4
+
+# Legacy single-worker names (optional): CELERY_QUEUES / CELERY_CONCURRENCY
+# If set without CELERY_*_QUEUES, queues are auto-split by name prefix.
+
+# Optional: override broker without editing config.ini
+# BROKER_URL=redis://127.0.0.1:6379/0
