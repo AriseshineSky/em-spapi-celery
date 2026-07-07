@@ -10,6 +10,7 @@ from dropshipping.spapi.exceptions import SellingApiInvalidAsinException
 
 from em_tasks import logger
 from em_tasks.spapi import exceptions_to_retry, exceptions_not_retry
+from em_tasks.tasks.task_stats_doc import build_offer_stats_doc
 
 
 TASK_STATS_INDEX = "spapi_item_offers_task_stats"
@@ -244,42 +245,23 @@ class SpapiUpdateItemOffersTask():
       if not stats:
         continue
 
-      doc_id = (
-        f"offers-{marketplace}-{self.worker_id}-pid{self.worker['pid']}_"
-        f"{minute_bucket.isoformat()}"
-      )
       task_count = stats["task_count"]
       spapi_success_count = stats["spapi_success_count"]
       fetch_gap_count = stats["fetch_gap_count"]
-      doc = {
-        "_id": doc_id,
-        "marketplace": marketplace,
-        "minute": minute_bucket.isoformat(),
-        "num_asins": stats["num_asins"],
-        "successful_asins": stats["successful_asins"],
-        "failed_asins": stats["failed_asins"],
-        "worker": self.worker_id,
-        "time": minute_bucket.isoformat(),
-        "task_duration_ms": stats["task_duration_ms"],
-        "spapi_duration_ms": stats["spapi_duration_ms"],
-        "task_count": task_count,
-        "api_failed": stats["api_failed"],
-        "avg_task_duration_ms": (
-          stats["task_duration_ms"] // task_count if task_count else 0
+      doc = build_offer_stats_doc(
+        doc_id=(
+          f"offers-{marketplace}-{self.worker_id}-pid{self.worker['pid']}_"
+          f"{minute_bucket.isoformat()}"
         ),
-        "avg_spapi_duration_ms": (
-          stats["spapi_duration_ms"] // task_count if task_count else 0
-        ),
-        "avg_spapi_success_ms": (
-          stats["spapi_success_duration_ms"] // spapi_success_count
-          if spapi_success_count else 0
-        ),
-        "avg_fetch_gap_ms": (
-          stats["fetch_gap_ms"] // fetch_gap_count if fetch_gap_count else 0
-        ),
-        "fetch_gap_ms": stats["fetch_gap_ms"],
-        "fetch_gap_count": fetch_gap_count,
-      }
+        worker_id=self.worker_id,
+        marketplace=marketplace,
+        condition=self.condition,
+        minute_bucket=minute_bucket,
+        stats=stats,
+        task_count=task_count,
+        spapi_success_count=spapi_success_count,
+        fetch_gap_count=fetch_gap_count,
+      )
 
       try:
         self.product_service.save_products(TASK_STATS_INDEX, [doc])
