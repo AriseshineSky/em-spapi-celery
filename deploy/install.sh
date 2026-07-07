@@ -29,11 +29,15 @@ chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$CONFIG_DIR"
 chmod +x "$APP_ROOT/deploy/bin/run-worker.sh"
 
 echo "==> Installing Python dependencies (uv) as ${APP_USER}"
-if ! command -v uv &>/dev/null; then
-  echo "uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-  exit 1
+UV_BIN="${APP_HOME}/.local/bin/uv"
+if [[ ! -x "$UV_BIN" ]]; then
+  if ! command -v uv &>/dev/null; then
+    echo "uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+    exit 1
+  fi
+  UV_BIN="$(command -v uv)"
 fi
-sudo -u "$APP_USER" bash -lc "cd '$APP_ROOT' && uv sync --no-dev"
+sudo -u "$APP_USER" bash -lc "export PATH='${APP_HOME}/.local/bin:\$PATH'; cd '$APP_ROOT' && '$UV_BIN' sync --no-dev"
 
 if [[ ! -f "$CONFIG_DIR/config.ini" ]]; then
   install -m 0640 -o "$APP_USER" -g "$APP_USER" \

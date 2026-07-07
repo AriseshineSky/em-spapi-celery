@@ -406,6 +406,7 @@ class SpItemOfferBatchConverter(OfferConverter):
                 }
                 # logger.error(item_offers_response)
                 sendRobust(signal=general_error, message=json.dumps(item_offers_response))
+                continue
 
             errors = item_offers_response.get('body', d).get('errors', None)
             if errors is not None:

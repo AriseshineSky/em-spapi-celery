@@ -16,7 +16,7 @@ from em_celery.tasks.spapi_update_item_offers_task import spapi_update_item_offe
 from em_celery.tools._sender_common import broker_option, configure_sender, normalize_broker
 
 
-marketplaces = ["us", "uk", "de", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "nl", "be"]
+marketplaces = ["us", "uk", "de", "es", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl"]
 
 # load_products_by_after_search() defaults to key="timestamp"; empty/new indices need this mapped.
 ASIN_NO_OFFER_INDEX_BODY = {

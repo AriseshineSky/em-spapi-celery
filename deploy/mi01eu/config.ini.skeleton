@@ -1,0 +1,37 @@
+# em-spapi-celery — Admin@mi01eu (34.57.231.45)
+# 填写真实值后: sudo systemctl restart em-spapi-celery-catalog-worker em-spapi-celery-offer-worker
+
+[celery]
+# 必须与 legacy em-celery 使用同一个 Redis broker
+broker_url = CHANGEME_REDIS_URL
+
+[spapi]
+lwa_refresh_token = CHANGEME
+lwa_client_id = CHANGEME
+lwa_client_secret = CHANGEME
+aws_access_key = CHANGEME
+aws_secret_key = CHANGEME
+
+[product_service]
+host = CHANGEME_ES_HOST
+port = 9200
+user =
+password =
+
+[offer_service]
+host = CHANGEME_ES_HOST
+port = 9200
+user =
+password =
+
+[telegram]
+api_token = CHANGEME
+group_chat_id = CHANGEME
+
+[sentry]
+dsn =
+traces_sample_rate = 0.1
+profiles_sample_rate = 0.0
+
+[logging]
+level = INFO

@@ -283,7 +283,7 @@ flowchart LR
 
 | 命令 | marketplace 列表 |
 |------|-------------------|
-| `spapi_all_catalog_items_task_send_from_es` | us, uk, de, it, jp, ca, mx, ae, in, fr, pl, be, nl |
+| `spapi_all_catalog_items_task_send_from_es` | us, uk, de, es, it, jp, ca, mx, ae, in, fr, pl, be, nl |
 | `spapi_all_item_offers_task_send_from_es` | 同上 |
 
 队列控制：长度 ≤100 才发送；≥10000 停止；日本 catalog 每批 10 ASIN，其余 20。

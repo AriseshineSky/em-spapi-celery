@@ -17,7 +17,7 @@ from em_celery.tasks.spapi_update_catalog_items_task import spapi_update_catalog
 from em_celery.tools._sender_common import broker_option, configure_sender, normalize_broker
 
 
-marketplaces = ["us", "uk", "de", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl"]
+marketplaces = ["us", "uk", "de", "es", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl"]
 task_batch_size_by_marketplace = {"jp": 10}
 
 # load_products_by_after_search(..., key="timestamp") sorts on this field; empty indices need a mapping.
