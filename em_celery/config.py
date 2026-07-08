@@ -2,6 +2,15 @@
 
 import os
 
+from em_celery.scheduling.kombu_priority_patch import (  # noqa: F401
+    apply_kombu_priority_patch,
+    broker_transport_options,
+)
+from em_celery.scheduling.priority import (
+    PRIORITY_BULK,
+    user_to_broker_priority,
+)
+
 # Task
 task_ignore_result = True
 task_store_errors_even_if_ignored = False
@@ -9,9 +18,13 @@ task_track_started = False
 task_acks_late = True
 task_reject_on_worker_lost = True
 task_create_missing_queues = True
+task_default_priority = user_to_broker_priority(PRIORITY_BULK)
+task_queue_max_priority = 9
 
 # Worker
 broker_url = os.getenv('BROKER_URL', '')
+broker_transport_options = broker_transport_options()
+worker_prefetch_multiplier = 1
 
 # Logging — stdout goes to journald when run under systemd (Celery best practice).
 worker_hijack_root_logger = False

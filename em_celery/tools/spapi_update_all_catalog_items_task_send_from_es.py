@@ -5,7 +5,6 @@ import datetime
 import time
 
 import click
-from kombu import Connection
 from dropshipping.utils.utils import is_asin_valid
 import dateutil
 import dateutil.parser
@@ -13,8 +12,14 @@ import redis
 from urllib.parse import urlparse
 
 from em_celery import logger, get_product_service
+from em_celery.scheduling.priority import redis_priority_queue_depth
 from em_celery.tasks.spapi_update_catalog_items_task import spapi_update_catalog_items
-from em_celery.tools._sender_common import broker_option, configure_sender, normalize_broker
+from em_celery.tools._sender_common import (
+  broker_connection,
+  broker_option,
+  configure_sender,
+  normalize_broker,
+)
 
 
 marketplaces = ["us", "uk", "de", "es", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl"]
@@ -70,14 +75,14 @@ class SpapiUpdateCatalogItemsTaskSender():
     self.ttl = ttl
     self.force = force
     self.last_send_time = None
-    self.connection = Connection(self.broker_url)
+    self.connection = broker_connection(self.broker_url)
     self.search_opts = {'_source': ['asin', 'time']}
     self.redis = self.get_redis_client(broker_url)
     self.queue_limit = 10000
     self.queue_low_cut = 100
 
   def is_queue_need_to_send(self, queue):
-      queue_size = self.redis.llen(queue)
+      queue_size = redis_priority_queue_depth(self.redis, queue)
 
       logger.debug(
           f'[current queue size] {queue}: {queue_size}'
@@ -85,7 +90,7 @@ class SpapiUpdateCatalogItemsTaskSender():
       return queue_size <= self.queue_low_cut
 
   def is_queue_full(self, queue):
-      queue_size = self.redis.llen(queue)
+      queue_size = redis_priority_queue_depth(self.redis, queue)
 
       logger.debug(
           f'[current queue size] {queue}: {queue_size}'

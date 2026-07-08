@@ -6,14 +6,13 @@ import time
 import json
 
 import click
-from kombu import Connection
 from dropshipping.utils.utils import is_asin_valid
 import dateutil
 import dateutil.parser
 
 from em_celery import logger, get_product_service
 from em_celery.tasks.spapi_update_catalog_items_task import spapi_update_catalog_items
-from em_celery.tools._sender_common import broker_option, configure_sender, normalize_broker
+from em_celery.tools._sender_common import broker_connection, broker_option, configure_sender, normalize_broker
 
 
 @click.command('Send spapi update catalog items task to worker.')
@@ -48,7 +47,7 @@ class SpapiUpdateCatalogItemsTaskSender():
     self.indice_name = 'amz_products_api_{}_v2'.format(self.marketplace)
     self.last_send_time = None
     self.queue = 'SpapiCatalogItemsUpdate_{}'.format(self.marketplace.upper())
-    self.connection = Connection(self.broker_url)
+    self.connection = broker_connection(self.broker_url)
     self.product_service.ensure_indice(self.indice_name)
     self.search_opts = {'_source': ['asin', 'time']}
 

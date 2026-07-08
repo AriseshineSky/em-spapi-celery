@@ -9,6 +9,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 
 from em_celery.paths import config_path, log_dir
+from em_celery.scheduling.priority import base_queue_name
 
 _LOG_FORMAT = '%(asctime)s %(name)s [%(levelname)s]: %(message)s'
 _CONFIGURED_LOGGERS: set[str] = set()
@@ -80,7 +81,9 @@ def get_worker_settings(worker_type: str) -> dict[str, str]:
     'offer': 'SpapiItemOffersUpdate_US',
   }
 
-  queues = _env_queues(worker_type) or default_queues[worker_type]
+  queues = _normalize_worker_queues(
+    _env_queues(worker_type) or default_queues[worker_type]
+  )
   concurrency = _env_concurrency(worker_type) or '2'
   loglevel = (
     os.getenv('CELERY_LOGLEVEL')
@@ -120,6 +123,19 @@ def _env_concurrency(worker_type: str) -> str | None:
   return value.strip() if value else None
 
 
+def _normalize_worker_queues(combined: str) -> str:
+  """Strip ``:0``–``:9`` suffixes; Kombu handles priority sub-queues on the base name."""
+  names: list[str] = []
+  seen: set[str] = set()
+  for raw in combined.split(','):
+    queue = base_queue_name(raw.strip())
+    if not queue or queue in seen:
+      continue
+    seen.add(queue)
+    names.append(queue)
+  return ','.join(names)
+
+
 def _split_queues_by_type(combined: str) -> tuple[str | None, str | None]:
   """Split combined queue list into catalog / offer by name prefix."""
   if not combined:
@@ -128,7 +144,7 @@ def _split_queues_by_type(combined: str) -> tuple[str | None, str | None]:
   catalog: list[str] = []
   offer: list[str] = []
   for raw in combined.split(','):
-    queue = raw.strip()
+    queue = base_queue_name(raw.strip())
     if not queue:
       continue
     if queue.startswith('SpapiCatalogItemsUpdate_'):

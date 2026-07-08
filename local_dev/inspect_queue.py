@@ -4,6 +4,7 @@
 Inspect or purge Celery Redis queue lengths for SP-API catalog/offer tasks.
 
 Celery (Redis backend) stores pending messages in lists named after the queue.
+Priority tasks use suffix sub-keys ``:1``–``:9``; bulk (priority 0) uses the base name.
 """
 
 from __future__ import annotations
@@ -17,6 +18,11 @@ try:
 except ImportError:
     print("Install redis: pip install redis", file=sys.stderr)
     raise
+
+from em_celery.scheduling.priority import (
+    iter_redis_priority_queue_keys,
+    redis_priority_queue_depth,
+)
 
 
 def queue_names(marketplace: str) -> tuple[str, str]:
@@ -36,6 +42,11 @@ def main() -> int:
     )
     parser.add_argument("--marketplace", default="us", help="Marketplace code")
     parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show per-priority sub-queue lengths",
+    )
+    parser.add_argument(
         "--purge",
         action="store_true",
         help="Delete all pending messages in both queues (destructive)",
@@ -53,13 +64,20 @@ def main() -> int:
 
     queues = [catalog_q, offers_q]
     for name in queues:
-        length = client.llen(name)
-        print(f"{name}: {length} pending message(s)")
+        total = redis_priority_queue_depth(client, name)
+        print(f"{name}: {total} pending message(s)")
+        if args.verbose:
+            for key in iter_redis_priority_queue_keys(name):
+                length = client.llen(key)
+                if length:
+                    print(f"  {key}: {length}")
 
     if args.purge:
         for name in queues:
-            deleted = client.delete(name)
-            print(f"purged {name}: deleted={deleted}")
+            deleted = 0
+            for key in iter_redis_priority_queue_keys(name):
+                deleted += client.delete(key)
+            print(f"purged {name}: deleted={deleted} key(s)")
 
     return 0
 

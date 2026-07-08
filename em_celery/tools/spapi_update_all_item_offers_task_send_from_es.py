@@ -5,15 +5,20 @@ import datetime
 import time
 import redis
 import click
-from kombu import Connection
 from dropshipping.utils.utils import is_asin_valid
 import dateutil
 import dateutil.parser
 from urllib.parse import urlparse
 
 from em_celery import logger, get_offer_service, get_product_service
+from em_celery.scheduling.priority import redis_priority_queue_depth
 from em_celery.tasks.spapi_update_item_offers_task import spapi_update_item_offers
-from em_celery.tools._sender_common import broker_option, configure_sender, normalize_broker
+from em_celery.tools._sender_common import (
+  broker_connection,
+  broker_option,
+  configure_sender,
+  normalize_broker,
+)
 
 
 marketplaces = ["us", "uk", "de", "es", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl"]
@@ -67,7 +72,7 @@ class SpapiUpdateItemOffersTaskSender():
     self.condition = condition
     self.ttl = ttl
     self.force = force
-    self.connection = Connection(broker_url)
+    self.connection = broker_connection(broker_url)
     self.offer_type = 'lowest_offer_listings'
     self.last_send_time = None
     self.redis = self.get_redis_client(broker_url)
@@ -76,7 +81,7 @@ class SpapiUpdateItemOffersTaskSender():
     self.queue_low_cut = 100
 
   def is_queue_need_to_send(self, queue):
-      queue_size = self.redis.llen(queue)
+      queue_size = redis_priority_queue_depth(self.redis, queue)
 
       logger.debug(
           f'[current queue size] {queue}: {queue_size}'
@@ -84,7 +89,7 @@ class SpapiUpdateItemOffersTaskSender():
       return queue_size <= self.queue_low_cut
 
   def is_queue_full(self, queue):
-      queue_size = self.redis.llen(queue)
+      queue_size = redis_priority_queue_depth(self.redis, queue)
 
       logger.debug(
           f'[current queue size] {queue}: {queue_size}'

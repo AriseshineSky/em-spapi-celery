@@ -6,14 +6,13 @@ import time
 import json
 
 import click
-from kombu import Connection
 from dropshipping.utils.utils import is_asin_valid
 import dateutil
 import dateutil.parser
 
 from em_celery import logger, get_offer_service
 from em_celery.tasks.spapi_update_item_offers_task import spapi_update_item_offers
-from em_celery.tools._sender_common import broker_option, configure_sender, normalize_broker
+from em_celery.tools._sender_common import broker_connection, broker_option, configure_sender, normalize_broker
 
 
 @click.command('Send spapi update item offers task to worker.')
@@ -47,7 +46,7 @@ class SpapiUpdateItemOffersTaskSender():
     self.condition = condition
     self.ttl = ttl
     self.force = force
-    self.connection = Connection(broker_url)
+    self.connection = broker_connection(broker_url)
     self.queue = 'SpapiItemOffersUpdate_{}'.format(marketplace.upper())
     self.offer_type = 'lowest_offer_listings'
     self.last_send_time = None

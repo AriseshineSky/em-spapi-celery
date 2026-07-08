@@ -2,12 +2,13 @@
 
 import time
 
-from kombu import Connection
 import redis
 from dropshipping.utils.utils import is_asin_valid
 
 from em_celery import logger
+from em_celery.scheduling.priority import redis_priority_queue_depth
 from em_celery.tasks.spapi_update_item_offers_task import spapi_update_item_offers
+from em_celery.tools._sender_common import broker_connection
 
 
 class AmzOffersUpdater():
@@ -17,7 +18,7 @@ class AmzOffersUpdater():
     self.qps = qps
     self.condition = condition
     self.r = redis.Redis.from_url(broker_url)
-    self.connection = Connection(broker_url)
+    self.connection = broker_connection(broker_url)
     self.queue = 'SpapiItemOffersUpdate_{}'.format(marketplace.upper())
     self.offer_type = 'lowest_offer_listings'
     self.last_send_time = None
@@ -49,10 +50,7 @@ class AmzOffersUpdater():
         self.marketplace, chunk, self.condition)
 
   def tasks_cnt(self):
-    cnt = 0
     try:
-      cnt = self.r.llen(self.queue)
-    except:
-      pass
-
-    return cnt
+      return redis_priority_queue_depth(self.r, self.queue)
+    except Exception:
+      return 0
