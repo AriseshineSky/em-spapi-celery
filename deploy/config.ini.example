@@ -1,9 +1,8 @@
 # Copy to ~/.em_celery/config.ini (install.sh does this on first deploy).
 # Legacy em-celery uses the same path for Admin user.
-
-[celery]
-# Broker for senders/workers when BROKER_URL is not set.
-broker_url = redis://127.0.0.1:6379/0
+#
+# Broker: set BROKER_URL in /etc/conf.d/em_celery or the process environment.
+# Elasticsearch cluster: 7.17.10 (product_service + offer_service)
 
 [spapi]
 lwa_refresh_token = CHANGEME
@@ -27,11 +26,6 @@ password =
 [telegram]
 api_token = CHANGEME
 group_chat_id = CHANGEME
-
-[sentry]
-dsn =
-traces_sample_rate = 0.1
-profiles_sample_rate = 0.0
 
 [logging]
 level = INFO

@@ -2,6 +2,15 @@
 
 本文描述 SP-API Catalog / Offer 采集管道的架构、数据流、组件职责与运维要点。
 
+**专题文档（建议精读）：**
+
+| 文档 | 内容 |
+|------|------|
+| [ENTRY_POINTS.md](./ENTRY_POINTS.md) | 程序入口、CLI / Worker 启动、目录职责、学习顺序 |
+| [OFFER_PIPELINE.md](./OFFER_PIPELINE.md) | Offer 从入队到写 ES 的逐步代码走读 |
+| [SYNC_FETCH_OFFERS.md](./SYNC_FETCH_OFFERS.md) | 同步脚本 `spapi_fetch_item_offers_sync`（不经 Celery） |
+| [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md) | Redis 优先级子队列（`:9` → bulk）机制 |
+
 ---
 
 ## 1. 项目概述
@@ -10,9 +19,9 @@
 
 - 通过 **Amazon SP-API** 拉取商品 Catalog 与 Item Offers
 - 将结果写入 **Elasticsearch**
-- 使用 **Celery + Redis** 异步调度，支持多 marketplace、TTL 去重、限流
+- 使用 **Celery + Redis** 异步调度，支持多 marketplace、TTL 去重、限流、**Redis 优先级子队列**（与 em-workers 对齐）
 
-典型使用场景：批量 ASIN 需要定期刷新 catalog 属性或 competitive offer，由 Sender 投递任务、Worker 消费并回写 ES。
+典型使用场景：批量 ASIN 需要定期刷新 catalog 属性或 competitive offer，由 Sender 投递任务、Worker 消费并回写 ES。高优 offer 刷新（如 em-workers `priority=9`）通过 `SpapiItemOffersUpdate_{MP}:9` 子队列优先被消费。
 
 ### 技术栈
 
@@ -22,7 +31,7 @@
 | 依赖管理 | [uv](https://docs.astral.sh/uv/) + `pyproject.toml` |
 | 任务队列 | Celery 5.x + Redis broker |
 | 外部 API | Amazon SP-API（Catalog Items、Products Pricing） |
-| 存储 | Elasticsearch 6.x（`product_service` / `offer_service`） |
+| 存储 | Elasticsearch **7.17.10**（`product_service` / `offer_service`；Python 客户端 `elasticsearch>=7.17,<8`） |
 | 私有库 | `vendor/dropshipping`、`vendor/cmutils`（本地 vendored） |
 
 ---
@@ -46,6 +55,7 @@ flowchart TB
     subgraph Broker["Redis Broker"]
         Q_CAT[SpapiCatalogItemsUpdate_US]
         Q_OFF[SpapiItemOffersUpdate_US]
+        Q_OFF9[SpapiItemOffersUpdate_US:9]
     end
 
     subgraph Worker["Celery Worker"]
@@ -72,7 +82,7 @@ flowchart TB
     S_ES --> Q_CAT & Q_OFF
     S_ALL --> Q_CAT & Q_OFF
     Q_CAT --> T_CAT
-    Q_OFF --> T_OFF
+    Q_OFF & Q_OFF9 --> T_OFF
     T_CAT --> SPAPI --> PARSER --> PS --> ES_CAT
     T_OFF --> SPAPI --> OS --> ES_OFF
     S_SYNC --> SPAPI --> OS --> ES_OFF
@@ -116,7 +126,7 @@ flowchart LR
 | `vendor/dropshipping/` | SP-API 客户端封装、`EsOfferService`、ASIN 校验 |
 | `vendor/cmutils/` | `IniConfigLoader`、日志工具 |
 | `local_dev/` | 本地 Redis/ES、冒烟脚本、worker 启动脚本 |
-| `docs/` | 技术文档 |
+| `docs/` | 技术文档（见上方专题文档表） |
 
 ---
 
@@ -151,6 +161,8 @@ sequenceDiagram
 
 ### 3.2 Offer（报价）流程
 
+> 逐步代码走读见 [OFFER_PIPELINE.md](./OFFER_PIPELINE.md)；优先级子队列见 [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md)。
+
 ```mermaid
 sequenceDiagram
     participant Src as ASIN 来源
@@ -163,8 +175,8 @@ sequenceDiagram
 
     Src->>Sender: 文件 / ES 扫描 ASIN
     Sender->>ES: 查询 lowest_offer_listings_{mp}_{cond}（TTL）
-    Sender->>Redis: apply_async → SpapiItemOffersUpdate_{MP}
-    Redis->>Worker: 消费 spapi_update_item_offers
+    Sender->>Redis: apply_async → SpapiItemOffersUpdate_{MP}[/:{priority}]
+    Redis->>Worker: BRPOP（:9 … :1 → 无后缀）
     Worker->>Task: run()
     loop 内部重试
         Task->>API: get_item_offers_batch
@@ -233,7 +245,13 @@ from em_celery.tasks.spapi_update_item_offers_task import spapi_update_item_offe
 | `task_reject_on_worker_lost` | `True` | Worker 丢失时重新入队 |
 | `task_ignore_result` | `True` | 不存储任务结果 |
 | `task_create_missing_queues` | `True` | 自动创建队列 |
+| `task_default_priority` | `0` | 未指定 priority 时进 bulk 队列（无后缀） |
+| `task_queue_max_priority` | `9` | 最高优先级 |
+| `broker_transport_options` | `priority_steps` + `sep: ":"` | Redis 优先级子队列 |
+| `worker_prefetch_multiplier` | `1` | 配合优先级公平消费 |
 | `broker_url` | `BROKER_URL` 环境变量 | Redis 地址 |
+
+Worker 启动时 import `em_celery.scheduling.kombu_priority_patch`，消费顺序为 `:9` → … → 无后缀。详见 [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md)。
 
 ### 4.3 Worker 启动
 
@@ -244,7 +262,7 @@ celery -A em_celery.worker worker \
   -l info --concurrency 1
 ```
 
-或使用 `local_dev/run_local_worker.sh`（`MARKETPLACE` 环境变量控制队列后缀，默认 `US`）。
+或使用 `local_dev/run_local_worker.sh`（需设置 `MARKETPLACE` 环境变量，如 `export MARKETPLACE=US`）。
 
 ### 4.4 Worker 初始化信号
 
@@ -293,7 +311,9 @@ flowchart LR
 
 | 命令 | 说明 |
 |------|------|
-| `spapi_fetch_item_offers_sync` | 直接调用 `SpapiUpdateItemOffersTask.run()` 写 ES，用于验证 SP-API 凭证与 ES 连通性 |
+| `spapi_fetch_item_offers_sync` | 直接调用 `SpapiUpdateItemOffersTask.run()` 写 ES；**不读 Redis 队列** |
+
+详见 [SYNC_FETCH_OFFERS.md](./SYNC_FETCH_OFFERS.md)。
 
 ```bash
 spapi_fetch_item_offers_sync -m us -a B0D1XD1ZV3
@@ -387,8 +407,8 @@ flowchart TD
         C1[task 执行] --> C2{异常类型}
         C2 -->|Forbidden / Auth| C3[Telegram 告警 + shutdown worker + Reject requeue]
         C2 -->|exceptions_to_retry| C4[Reject requeue]
-        C2 -->|exceptions_not_retry| C5[Sentry + Ignore]
-        C2 -->|其他 Exception| C6[Sentry + Ignore]
+        C2 -->|exceptions_not_retry| C5[Ignore]
+        C2 -->|其他 Exception| C6[Ignore]
     end
 
     L1 --> L2 --> L3
@@ -433,7 +453,6 @@ Offer 任务在累计 250 次 `Reject` 后会发 Telegram 重置通知。
 | 项 | 值 |
 |----|-----|
 | 默认路径 | `~/.em_celery/config.ini` |
-| 覆盖环境变量 | `MWS_COLLECTOR_CONFIGURATION_PATH` |
 | 样例 | `local_dev/config.ini.sample` |
 
 ### 9.2 INI 配置段
@@ -441,19 +460,15 @@ Offer 任务在累计 250 次 `Reject` 后会发 Telegram 重置通知。
 | 段 | 键 | 用途 |
 |----|-----|------|
 | `[spapi]` | `lwa_refresh_token`, `lwa_client_id`, `lwa_client_secret`, `aws_access_key`, `aws_secret_key` | SP-API 凭证 |
-| `[product_service]` | `host`, `port`, `user`, `password` | Catalog ES |
-| `[offer_service]` | `host`, `port`, `user`, `password` | Offer ES |
-| `[broker_url]` | `amz` | 备用 broker（CLI 通常用 `-b` / `BROKER_URL`） |
-| `[sentry]` | `dsn`, `traces_sample_rate`, `profiles_sample_rate` | 可选 Sentry |
-
+| `[product_service]` | `host`, `port`, `user`, `password` | Catalog ES（**7.17.10**） |
+| `[offer_service]` | `host`, `port`, `user`, `password` | Offer ES（**7.17.10**） |
 ### 9.3 环境变量
 
 | 变量 | 用途 |
 |------|------|
-| `BROKER_URL` | Celery Redis broker（Worker 与 Sender 必须一致） |
-| `MWS_COLLECTOR_CONFIGURATION_PATH` | `config.ini` 路径 |
+| `BROKER_URL` | Celery Redis broker（Worker 与 Sender **必须**设置；见 `/etc/conf.d/em_celery`） |
 | `ENV` | `em_tasks` 日志级别：`dev` → DEBUG，否则 INFO |
-| `MARKETPLACE` | `run_local_worker.sh` 队列后缀（默认 `US`） |
+| `MARKETPLACE` | `run_local_worker.sh` 队列后缀（**必填**，如 `US`） |
 
 ---
 
@@ -499,7 +514,7 @@ flowchart TB
     ROOT --> CM[cmutils<br/>vendor/]
 
     DS --> SPAPI_LIB[python-amazon-sp-api]
-    DS --> ES_LIB[elasticsearch &lt;7]
+    DS --> ES_LIB[elasticsearch 7.17.x]
     DS --> TG[python-telegram-bot]
     EM_TASKS --> DS
     EM_TASKS --> PINT[pint]
@@ -511,7 +526,6 @@ flowchart TB
 | `cmutils` | `IniConfigLoader` |
 | `celery[redis]` | 异步任务 |
 | `click` | CLI |
-| `sentry-sdk` | 异常上报 |
 | `pint` | catalog 尺寸/重量单位换算 |
 
 ---
@@ -524,8 +538,10 @@ em-spapi-celery/
 ├── .python-version             # Python 3.12
 ├── em_celery/
 │   ├── worker.py               # Celery app + autodiscover_tasks
-│   ├── config.py               # Celery 配置
-│   ├── __init__.py             # get_config / get_*_service / Sentry
+│   ├── config.py               # Celery 配置（含 priority）
+│   ├── runtime.py              # 生产 worker 队列/并发解析
+│   ├── __init__.py             # get_config / get_*_service
+│   ├── scheduling/             # 优先级队列 priority + kombu patch
 │   ├── tasks/
 │   │   ├── __init__.py         # 显式导出已注册 task
 │   │   ├── base.py             # BaseTask
@@ -540,8 +556,12 @@ em-spapi-celery/
 │   ├── dropshipping/
 │   └── cmutils/
 ├── local_dev/                  # 本地测试工具
+├── tests/scheduling/           # 优先级队列测试
 └── docs/
-    └── TECHNICAL.md            # 本文档
+    ├── TECHNICAL.md            # 本文档
+    ├── ENTRY_POINTS.md         # 程序入口指南
+    ├── OFFER_PIPELINE.md       # Offer 端到端流程
+    └── PRIORITY_QUEUE.md       # 优先级队列机制
 ```
 
 ---

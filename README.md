@@ -38,23 +38,17 @@ uv sync --no-dev
 
 ## Configuration
 
-使用 INI 配置文件，默认路径与 legacy em-celery 相同：**`~/.em_celery/config.ini`**。
+使用 INI 配置文件，固定路径：**`~/.em_celery/config.ini`**
 
-路径解析顺序：
-
-1. `EM_CELERY_CONFIGURATION_PATH`
-2. `MWS_COLLECTOR_CONFIGURATION_PATH`
-3. `EM_SPAPI_CELERY_CONFIG`
-4. `~/.em_celery/config.ini`
-
-VPS 生产部署见 [deploy/README.md](deploy/README.md)（Admin 用户 + systemd）。Broker 可在 `config.ini [celery] broker_url` 或 `BROKER_URL` 环境变量中配置，Sender CLI 的 `-b` 可省略。
+VPS 生产部署见 [deploy/README.md](deploy/README.md)（Admin 用户 + systemd）。Broker 通过 **`BROKER_URL` 环境变量**（`/etc/conf.d/em_celery` 或 Sender CLI `-b`）配置。
 
 主要配置段：
 
 - `[spapi]` — Amazon SP-API 凭证
 - `[product_service]` — Catalog 产品 ES
 - `[offer_service]` — Offer ES
-- `[broker_url]` — Celery broker
+
+Broker 仅通过 **`BROKER_URL` 环境变量** 或 Sender CLI **`-b`** 配置，不在 `config.ini` 中。
 
 Usage
 -----
@@ -77,15 +71,21 @@ spapi_catalog_items_task_sender -b redis://localhost:6379/0 -m us asins.txt
 spapi_item_offers_task_sender -b redis://localhost:6379/0 -m us asins.txt
 ```
 
-同步拉取 offer（不经过 Celery）：
+项目已有同步脚本，适合先确认凭证和 ES 写入是否正常（**不经过 Celery，不读 Redis 队列**）：
+
+详见 [docs/SYNC_FETCH_OFFERS.md](docs/SYNC_FETCH_OFFERS.md)。
 
 ```bash
-spapi_fetch_item_offers_sync -m us -a B000000001
+spapi_fetch_item_offers_sync -m us -a B0D1XD1ZV3
 ```
 
 Documentation
 -------------
 
 - [技术文档（架构、流程图、CLI、配置）](docs/TECHNICAL.md)
+- [程序入口指南](docs/ENTRY_POINTS.md)
+- [Offer 端到端流程（入队 → 写 ES）](docs/OFFER_PIPELINE.md)
+- [同步拉取 Offer（spapi_fetch_item_offers_sync）](docs/SYNC_FETCH_OFFERS.md)
+- [Redis 优先级队列机制](docs/PRIORITY_QUEUE.md)
 - [Ubuntu VPS 部署](deploy/README.md)
 - [本地测试指南](local_dev/LOCAL_TESTING.md)

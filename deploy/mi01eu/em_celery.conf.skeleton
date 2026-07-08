@@ -1,7 +1,7 @@
 # em-spapi-celery worker env — mi01eu (34.57.231.45)
 # systemd: em-spapi-celery-catalog-worker / em-spapi-celery-offer-worker
+# Config: ~/.em_celery/config.ini (Admin user home)
 
-EM_CELERY_CONFIGURATION_PATH=/home/Admin/.em_celery/config.ini
 EM_SPAPI_CELERY_LOG_TO_FILE=0
 EM_SPAPI_CELERY_LOG_LEVEL=INFO
 ENV=prod
@@ -14,5 +14,4 @@ CELERY_CATALOG_CONCURRENCY=2
 CELERY_OFFER_QUEUES=SpapiItemOffersUpdate_US,SpapiItemOffersUpdate_UK,SpapiItemOffersUpdate_BE,SpapiItemOffersUpdate_PL,SpapiItemOffersUpdate_ES
 CELERY_OFFER_CONCURRENCY=4
 
-# 也可在此覆盖 broker（优先于 config.ini）
-# BROKER_URL=redis://LEGACY_REDIS_HOST:6379/0
+BROKER_URL=redis://LEGACY_REDIS_HOST:6379/0

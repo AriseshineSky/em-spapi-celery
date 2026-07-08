@@ -11,7 +11,7 @@
 ```
 /home/Admin/em-spapi-celery/     # 应用代码 + .venv
 /home/Admin/.em_celery/
-  config.ini                    # broker、队列、SP-API、ES
+  config.ini                    # SP-API、ES（broker 用 BROKER_URL 环境变量）
   logs/                         # CLI 文件日志（可选）
   data/                         # 运行时数据
 /etc/conf.d/em_celery           # systemd EnvironmentFile（与 legacy 一致）
@@ -44,7 +44,7 @@ sudo systemctl restart em-spapi-celery-catalog-worker em-spapi-celery-offer-work
 
 ## 挂到旧队列
 
-1. `[celery] broker_url` 在 `~/.em_celery/config.ini`（或 `BROKER_URL` 环境变量）
+1. `BROKER_URL` 在 `/etc/conf.d/em_celery`（systemd EnvironmentFile）
 2. 队列名写在 `/etc/conf.d/em_celery`（见上）
 
 Sender 继续用旧机器上的 em-celery 工具发任务。
@@ -73,16 +73,11 @@ journalctl -u em-spapi-celery-offer-worker -f
 
 改 `config.ini` 后重启对应服务。
 
-## 配置解析顺序
+## 配置
 
-**config.ini**（与 legacy em-celery 相同）：
+**config.ini**：固定路径 `~/.em_celery/config.ini`（Admin 用户 home 下）
 
-1. `EM_CELERY_CONFIGURATION_PATH`（通常在 `/etc/conf.d/em_celery` 中设置）
-2. `MWS_COLLECTOR_CONFIGURATION_PATH`
-3. `EM_SPAPI_CELERY_CONFIG`
-4. `~/.em_celery/config.ini`（默认）
-
-**EnvironmentFile**：`/etc/conf.d/em_celery`（systemd 加载，手动跑 worker 时 `run-worker.sh` 也会读取）
+**EnvironmentFile**：`/etc/conf.d/em_celery`（`BROKER_URL`、队列、并发等）
 
 ## 升级
 

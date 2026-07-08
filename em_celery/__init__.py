@@ -6,8 +6,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pydispatch import dispatcher
 
-import sentry_sdk
-
 from dropshipping.signals import invalid_asin
 from dropshipping.utils.offer_services import EsOfferService
 from em_tasks.spapi import Spapi
@@ -34,12 +32,6 @@ def get_config():
 
   return _cfg
 
-def get_broker_url():
-  url = os.getenv('BROKER_URL')
-  if url:
-    return url
-  return get_config().get('celery', {}).get('broker_url', '')
-
 def get_product_service():
   config = get_config()
   product_cfg = config['product_service']
@@ -55,9 +47,6 @@ def get_offer_service():
 def get_offer_service_config():
   config = get_config()
   return config['offer_service']
-
-def get_amz_broker_url():
-  return get_broker_url() or get_config().get('broker_url', {}).get('amz', None)
 
 def get_emp_offer_filter_config(marketplace):
   filter_cond = {
@@ -137,23 +126,3 @@ def save_error_asins(asin, country, errors='', ignore_exc=True):
   logger.warning('Invalid ASIN %s (%s): %s', asin, country, errors)
 
 dispatcher.connect(save_error_asins, signal=invalid_asin)
-
-sentry_enabled = False
-config = get_config()
-sentry_cfg = config.get('sentry', {})
-dsn = sentry_cfg.get('dsn', None)
-traces_sample_rate = sentry_cfg.get('traces_sample_rate', 0.5)
-profiles_sample_rate = sentry_cfg.get('profiles_sample_rate', 0.1)
-if dsn:
-  sentry_enabled = True
-
-  sentry_sdk.init(
-    dsn=dsn,
-    # Set traces_sample_rate to 1.0 to capture 100%
-    # of transactions for tracing.
-    traces_sample_rate=traces_sample_rate,
-    # Set profiles_sample_rate to 1.0 to profile 100%
-    # of sampled transactions.
-    # We recommend adjusting this value in production.
-    profiles_sample_rate=profiles_sample_rate,
-  )

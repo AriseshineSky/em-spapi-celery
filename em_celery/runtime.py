@@ -16,7 +16,7 @@ _CONFIGURED_LOGGERS: set[str] = set()
 
 
 def resolve_broker_url(cli_value: str | None = None) -> str:
-  """Broker URL from CLI flag, BROKER_URL env, or config [celery] section."""
+  """Broker URL from CLI flag or BROKER_URL environment variable."""
   if cli_value:
     return cli_value
 
@@ -24,15 +24,8 @@ def resolve_broker_url(cli_value: str | None = None) -> str:
   if env_url:
     return env_url
 
-  from em_celery import get_config
-
-  cfg_url = get_config().get('celery', {}).get('broker_url')
-  if cfg_url:
-    return cfg_url
-
   raise SystemExit(
-    'Broker URL is required: set BROKER_URL, [celery] broker_url in config.ini, '
-    'or pass -b/--broker_url.'
+    'Broker URL is required: set BROKER_URL or pass -b/--broker_url.'
   )
 
 

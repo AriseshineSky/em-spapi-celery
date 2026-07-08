@@ -21,7 +21,7 @@ setup(
   install_requires=[
     'requests',
     'mws<=0.8.9',
-    'elasticsearch<7.0.0',
+    'elasticsearch>=7.17.0,<8.0.0',
     'wrapt',
     'PyPyDispatcher',
     'pyyaml',

@@ -12,7 +12,7 @@ def broker_option(**kwargs):
   defaults = dict(
     type=str,
     default=None,
-    help='Celery broker URL (default: BROKER_URL or [celery] broker_url in config.ini).',
+    help='Celery broker URL (default: BROKER_URL env).',
   )
   defaults.update(kwargs)
   return click.option('-b', '--broker_url', **defaults)

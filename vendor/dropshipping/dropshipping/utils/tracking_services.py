@@ -61,7 +61,6 @@ class EsTrackingService(TrackingService):
         params = {
             '_op_type': 'index',
             '_index': self.indice_name,
-            '_type': '_doc'
         }
         cur_time = datetime.strftime(datetime.utcnow(), '%Y-%m-%dT%H:%M:%S')
         for order_id, tracking in trackings.items():
@@ -100,7 +99,6 @@ class EsTrackingService(TrackingService):
             'index': self.indice_name,
             'from_': 0,
             'size': len(order_ids),
-            'doc_type': '_doc',
             'body': {
                 'query': {'terms': {'_id': order_ids}}
             }
@@ -143,7 +141,6 @@ class EsTrackingService(TrackingService):
 
         params = {
             'index': self.indice_name,
-            'doc_type': '_doc',
             'size': 500,
             'query': query
         }
@@ -178,7 +175,6 @@ class EsTrackingService(TrackingService):
             'index': self.status_indice_name,
             'from_': 0,
             'size': len(trackings),
-            'doc_type': '_doc',
             'body': {
                 'query': {'terms': {'_id': trackings}}
             }
@@ -198,7 +194,6 @@ class EsTrackingService(TrackingService):
     def search_order_ids(self, query):
         params = {
             'index': self.indice_name,
-            'doc_type': '_doc',
             'size': 500,
         }
         params.update({'query': query['body']})
@@ -208,7 +203,6 @@ class EsTrackingService(TrackingService):
     def count_orders(self, query):
         params = {
             'index': self.indice_name,
-            'doc_type': '_doc',
         }
         params.update(query)
 

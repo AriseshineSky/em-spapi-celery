@@ -330,7 +330,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "dataclasses" },
-    { name = "elasticsearch", specifier = "<7.0.0" },
+    { name = "elasticsearch", specifier = ">=7.17.0,<8.0.0" },
     { name = "mws", specifier = "<=0.8.9" },
     { name = "pydispatch" },
     { name = "pypydispatcher" },
@@ -344,14 +344,15 @@ requires-dist = [
 
 [[package]]
 name = "elasticsearch"
-version = "6.8.2"
+version = "7.17.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "certifi" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ab/6d/f44ca1a2e6279af635b403eb0fe9e8c83f2eb33923f9101ba55618ad86f7/elasticsearch-6.8.2.tar.gz", hash = "sha256:c3a560bb83e4981b5a5c82080d2ceb99686d33692ef53365656129478aa5ddb2", size = 85261, upload-time = "2021-03-09T22:07:03.891Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/27/5b7e801213c16452d13eaddeae40810da5cd6152103f94e582e1d14d8c65/elasticsearch-7.17.13.tar.gz", hash = "sha256:ba1b87322045fc37831009c7c49ef0e2777165a2ad3390df4d9e2b7a09d90c86", size = 248490, upload-time = "2026-01-12T18:12:30.656Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/7a/3627579d85bd4d9f4bf73b1d4240e11612f02d86c7c53fbb934cd11d5d57/elasticsearch-6.8.2-py2.py3-none-any.whl", hash = "sha256:1aedf00b73f5d1e77cb4df70fec58f2efb664be4ce2686374239aa6c0373c65c", size = 90697, upload-time = "2021-03-09T22:07:00.757Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/06/be118b997069ff6643b5dafb13e60442bf65ec6530f3ef714d6455b11ae5/elasticsearch-7.17.13-py2.py3-none-any.whl", hash = "sha256:dac73df9a9070b9c96be45d99f4316badc525f8b17f418e9c86da2bb5855c892", size = 386157, upload-time = "2026-01-12T18:12:25.496Z" },
 ]
 
 [[package]]
@@ -363,13 +364,13 @@ dependencies = [
     { name = "click" },
     { name = "cmutils" },
     { name = "dropshipping" },
+    { name = "elasticsearch" },
     { name = "pint" },
     { name = "pypydispatcher" },
     { name = "python-dateutil" },
     { name = "python-telegram-bot" },
     { name = "redis" },
     { name = "requests" },
-    { name = "sentry-sdk" },
     { name = "urllib3" },
 ]
 
@@ -384,13 +385,13 @@ requires-dist = [
     { name = "click" },
     { name = "cmutils", editable = "vendor/cmutils" },
     { name = "dropshipping", editable = "vendor/dropshipping" },
+    { name = "elasticsearch", specifier = ">=7.17.0,<8.0.0" },
     { name = "pint" },
     { name = "pypydispatcher" },
     { name = "python-dateutil" },
     { name = "python-telegram-bot", specifier = "==12.8.0" },
     { name = "redis" },
     { name = "requests" },
-    { name = "sentry-sdk" },
     { name = "urllib3", specifier = "<2" },
 ]
 
@@ -678,19 +679,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl", hash = "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0", size = 73075, upload-time = "2026-05-14T19:25:26.443Z" },
-]
-
-[[package]]
-name = "sentry-sdk"
-version = "2.64.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "certifi" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/60/31/b7341f156a5f6f36f0b4845d6f1c28a2ae4799171dba7007f3a1e9b234b4/sentry_sdk-2.64.0.tar.gz", hash = "sha256:68be2c29e14ae310f8a39e1a79916b6d85c6cb41dcce789d14ff05fe293e4c55", size = 921020, upload-time = "2026-06-30T08:13:47.682Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/36/a8/3fb9a4319efa3b26f5be0e90e6d8918df43fa7c7e977d26390f589501d82/sentry_sdk-2.64.0-py3-none-any.whl", hash = "sha256:715ea91ca860a819e8d8a50a7bde3a80d0df3b4ed7b6660a20fb9a2d084188f1", size = 498901, upload-time = "2026-06-30T08:13:45.566Z" },
 ]
 
 [[package]]

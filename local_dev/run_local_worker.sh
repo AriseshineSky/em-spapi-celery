@@ -6,7 +6,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 : "${BROKER_URL:=redis://127.0.0.1:6379/0}"
-: "${MARKETPLACE:=US}"
+
+if [[ -z "${MARKETPLACE:-}" ]]; then
+  echo "MARKETPLACE is required (e.g. export MARKETPLACE=US)" >&2
+  exit 1
+fi
+
+MARKETPLACE="${MARKETPLACE^^}"
 
 export BROKER_URL
 
@@ -14,7 +20,7 @@ QUEUES="SpapiCatalogItemsUpdate_${MARKETPLACE},SpapiItemOffersUpdate_${MARKETPLA
 
 echo "Broker:  $BROKER_URL"
 echo "Queues:  $QUEUES"
-echo "Config:  ${MWS_COLLECTOR_CONFIGURATION_PATH:-~/.em_celery/config.ini}"
+echo "Config:  ~/.em_celery/config.ini"
 echo ""
 echo "Start worker (Ctrl+C to stop)..."
 

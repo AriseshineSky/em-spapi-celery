@@ -29,7 +29,6 @@ class EsRankService(RankService, EsService):
         common_args = {
             '_op_type': 'index',
             '_index': 'rank_{}'.format(country_code),
-            '_type': '_doc'
         }
         cur_time = datetime.strftime(datetime.utcnow(), '%Y-%m-%dT%H:%M:%S')
         for asin, sales_rank_item in sales_ranks.items():
@@ -56,7 +55,6 @@ class EsRankService(RankService, EsService):
             'index': 'rank_{}'.format(country_code.lower()),
             'from_': 0,
             'size': len(asins),
-            'doc_type': '_doc',
             'body': {
                 'query': {'terms': {'_id': asins}}
             }

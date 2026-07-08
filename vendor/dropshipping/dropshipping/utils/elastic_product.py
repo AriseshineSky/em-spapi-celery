@@ -32,7 +32,6 @@ class ElasticProduct:
             'index': self.index_name,
             'from_': offset,
             'size': len(asins),
-            "doc_type": region,
             'body': {
                 'query': query
             }
@@ -358,17 +357,23 @@ class ElasticProduct:
 
         while True:
             offset = page * size
+            body_query = query
+            if country is not None:
+                body_query = {
+                    'bool': {
+                        'must': [query],
+                        'filter': [{'term': {'country': country}}],
+                    }
+                }
+
             params = {
                 'index': self.index_name,
                 'from_': offset,
                 'size': size,
                 'body': {
-                    'query': query
+                    'query': body_query
                 }
             }
-
-            if country is not None:
-                params['doc_type'] = country
 
             # print params
             data = self.es_client.search(**params)
@@ -407,7 +412,6 @@ class ElasticProduct:
             _op_type=op_type,
             _index=self.index_name,
             _id=asin,
-            _type=region.lower(),
         )
 
         if op_type == 'update':

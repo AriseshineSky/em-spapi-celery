@@ -2,7 +2,6 @@
 
 import json
 
-import sentry_sdk
 from sp_api.base.exceptions import *
 from sp_api.auth.exceptions import AuthorizationError
 
@@ -17,7 +16,6 @@ from celery.exceptions import Ignore
 from celery.exceptions import Reject
 from celery.utils.log import get_task_logger
 
-from em_celery import sentry_enabled
 from em_celery.tasks.base import BaseTask
 from em_celery.tasks.worker_meta import build_worker_meta
 from em_celery.worker import app
@@ -66,14 +64,8 @@ def spapi_update_item_offers(self, marketplace, asins, condition='new', ttl=24, 
     raise Reject(str(e), requeue=True)
   except exceptions_not_retry as e:
     # TODO: Record why not retry
-    if sentry_enabled:
-      sentry_sdk.capture_exception(e)
-
     logger.exception(e)
     raise Ignore()
   except Exception as e:
-    if sentry_enabled:
-      sentry_sdk.capture_exception(e)
-
     logger.exception(e)
     raise Ignore()

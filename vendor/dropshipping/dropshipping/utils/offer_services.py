@@ -44,7 +44,6 @@ class EsOfferService(OfferService, EsService):
         common_args = {
             '_op_type': 'index',
             '_index': '{}_{}_{}'.format(offer_type, country_code.lower(), condition),
-            '_type': '_doc'
         }
         cur_time = datetime.strftime(datetime.utcnow(), '%Y-%m-%dT%H:%M:%S')
         for asin, offer_list in offers.items():
@@ -82,7 +81,6 @@ class EsOfferService(OfferService, EsService):
         common_args = {
             '_op_type': 'index',
             '_index': '{}_{}_{}'.format(offer_type, country_code.lower(), condition),
-            '_type': '_doc'
         }
         cur_time = datetime.strftime(datetime.utcnow(), '%Y-%m-%dT%H:%M:%S')
         for asin, item_offer in offers.items():
@@ -113,7 +111,6 @@ class EsOfferService(OfferService, EsService):
             'index': '{}_{}_{}'.format(offer_type, country_code.lower(), condition),
             'from_': 0,
             'size': len(asins),
-            'doc_type': '_doc',
             'body': {
                 'query': {'terms': {'_id': asins}}
             }
@@ -155,7 +152,6 @@ class ScrapyLowestOfferListingOfferService(EsOfferService):
             'index': '{}_{}_{}_scrapy'.format(offer_type, country_code.lower(), condition),
             'from_': 0,
             'size': len(asins),
-            'doc_type': '_doc',
             'body': {
                 'query': {'terms': {'_id': asins}}
             }

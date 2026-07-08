@@ -37,15 +37,3 @@ worker_task_log_format = (
 # Events
 worker_send_task_events = False
 task_send_sent_event = False
-
-
-def _apply_config_defaults():
-  """Load broker_url from config.ini when BROKER_URL is unset."""
-  global broker_url
-  if broker_url:
-    return
-  from em_celery import get_broker_url
-  broker_url = get_broker_url()
-
-
-_apply_config_defaults()

@@ -16,23 +16,7 @@ def _expand(path: str) -> str:
 
 
 def config_path() -> str:
-  """Resolve config.ini location.
-
-  Priority (same as legacy em-celery):
-    1. EM_CELERY_CONFIGURATION_PATH
-    2. MWS_COLLECTOR_CONFIGURATION_PATH
-    3. EM_SPAPI_CELERY_CONFIG
-    4. ~/.em_celery/config.ini
-  """
-  for env_name in (
-      'EM_CELERY_CONFIGURATION_PATH',
-      'MWS_COLLECTOR_CONFIGURATION_PATH',
-      'EM_SPAPI_CELERY_CONFIG',
-  ):
-    value = os.getenv(env_name)
-    if value:
-      return _expand(value)
-
+  """Return ~/.em_celery/config.ini."""
   return _expand(_CONFIG_FILE)
 
 

@@ -37,9 +37,6 @@ sudo bash -lc 'cd /home/Admin/em-spapi-celery && ./deploy/install.sh /home/Admin
 ### `/home/Admin/.em_celery/config.ini`
 
 ```ini
-[celery]
-broker_url = redis://LEGACY_REDIS_HOST:6379/0   # 与旧 em-celery 相同
-
 [spapi]
 lwa_refresh_token = ...
 lwa_client_id = ...
@@ -48,11 +45,11 @@ aws_access_key = ...
 aws_secret_key = ...
 
 [product_service]
-host = ES_HOST
+host = ES_HOST          # Elasticsearch 7.17.10
 port = 9200
 
 [offer_service]
-host = ES_HOST
+host = ES_HOST          # Elasticsearch 7.17.10
 port = 9200
 
 [telegram]
@@ -72,6 +69,8 @@ sudo nano /home/Admin/.em_celery/config.ini
 ### `/etc/conf.d/em_celery`
 
 ```ini
+BROKER_URL=redis://LEGACY_REDIS_HOST:6379/0
+
 CELERY_CATALOG_QUEUES=SpapiCatalogItemsUpdate_US,SpapiCatalogItemsUpdate_UK,SpapiCatalogItemsUpdate_BE,SpapiCatalogItemsUpdate_PL,SpapiCatalogItemsUpdate_ES
 CELERY_CATALOG_CONCURRENCY=2
 

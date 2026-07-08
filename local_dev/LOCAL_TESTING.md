@@ -42,7 +42,7 @@ cd /home/sky/src/em-spapi-celery
 # 安装依赖（uv，见根目录 pyproject.toml）
 uv sync
 
-# 启动本地 Redis（可选：连同 ES 一起起）
+# 启动本地 Redis（可选：连同 ES 7.17.10 一起起）
 docker compose -f local_dev/docker-compose.yml up -d
 ```
 
@@ -95,12 +95,6 @@ cp local_dev/config.ini.sample ~/.em_celery/config.ini
 # 编辑 ~/.em_celery/config.ini，填入 ES 地址（docker compose 默认可用）
 ```
 
-或指定路径：
-
-```bash
-export MWS_COLLECTOR_CONFIGURATION_PATH=/path/to/your/config.ini
-```
-
 ### 发送 catalog task
 
 ```bash
@@ -148,6 +142,7 @@ python local_dev/inspect_queue.py --broker "$BROKER_URL" --marketplace us
 ```bash
 cd /home/sky/src/em-spapi-celery
 export BROKER_URL=redis://127.0.0.1:6379/0
+export MARKETPLACE=US
 # config.ini 中需有有效 [spapi] 凭证
 
 bash local_dev/run_local_worker.sh
@@ -190,7 +185,7 @@ celery -A em_celery.worker inspect reserved
 
 ## L4：不测 Celery，直接测 SP-API 逻辑
 
-项目已有同步脚本，适合先确认凭证和 ES 写入是否正常：
+同步脚本 `spapi_fetch_item_offers_sync` **不读 Redis 队列**，在当前进程直接调用 `SpapiUpdateItemOffersTask.run()`。详见 [docs/SYNC_FETCH_OFFERS.md](../docs/SYNC_FETCH_OFFERS.md)。
 
 ```bash
 spapi_fetch_item_offers_sync -m us -a B0D1XD1ZV3
@@ -213,7 +208,7 @@ Worker 的 `-Q` 必须包含 sender 写入的队列，否则消息会堆积。
 
 ### Sender 报错找不到 config
 
-默认读 `~/.em_celery/config.ini`。设置 `MWS_COLLECTOR_CONFIGURATION_PATH` 指向你的 ini 文件。
+默认读 `~/.em_celery/config.ini`。
 
 ### 消息进队列但 Worker 不消费
 
@@ -235,7 +230,7 @@ Worker 的 `-Q` 必须包含 sender 写入的队列，否则消息会堆积。
 
 | 文件 | 用途 |
 |------|------|
-| `docker-compose.yml` | 本地 Redis + Elasticsearch |
+| `docker-compose.yml` | 本地 Redis + Elasticsearch **7.17.10** |
 | `config.ini.sample` | 配置文件模板 |
 | `sample_asins.txt` | 测试用 ASIN 列表 |
 | `smoke_test_dispatch.py` | L1 分发冒烟（不依赖 ES） |

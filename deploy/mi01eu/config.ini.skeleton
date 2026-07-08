@@ -1,9 +1,7 @@
 # em-spapi-celery — Admin@mi01eu (34.57.231.45)
 # 填写真实值后: sudo systemctl restart em-spapi-celery-catalog-worker em-spapi-celery-offer-worker
-
-[celery]
-# 必须与 legacy em-celery 使用同一个 Redis broker
-broker_url = CHANGEME_REDIS_URL
+#
+# Broker: /etc/conf.d/em_celery 中的 BROKER_URL（与 legacy em-celery 同一 Redis）
 
 [spapi]
 lwa_refresh_token = CHANGEME
@@ -27,11 +25,6 @@ password =
 [telegram]
 api_token = CHANGEME
 group_chat_id = CHANGEME
-
-[sentry]
-dsn =
-traces_sample_rate = 0.1
-profiles_sample_rate = 0.0
 
 [logging]
 level = INFO

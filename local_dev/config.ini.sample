@@ -1,8 +1,9 @@
 # Copy to ~/.em_celery/config.ini for local sender / worker testing.
 # cp local_dev/config.ini.sample ~/.em_celery/config.ini
-
-[celery]
-broker_url = redis://127.0.0.1:6379/0
+#
+# Broker: set BROKER_URL (e.g. export BROKER_URL=redis://127.0.0.1:6379/0)
+# Local ES: docker compose -f local_dev/docker-compose.yml up -d
+# Server version: Elasticsearch 7.17.10 (port 9200)
 
 [spapi]
 lwa_refresh_token = CHANGEME
@@ -22,9 +23,6 @@ host = 127.0.0.1
 port = 9200
 user =
 password =
-
-[broker_url]
-amz = redis://127.0.0.1:6379/0
 
 [telegram]
 api_token = CHANGEME

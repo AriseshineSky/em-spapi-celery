@@ -42,7 +42,7 @@ sudo -u "$APP_USER" bash -lc "export PATH='${APP_HOME}/.local/bin:\$PATH'; cd '$
 if [[ ! -f "$CONFIG_DIR/config.ini" ]]; then
   install -m 0640 -o "$APP_USER" -g "$APP_USER" \
     "$APP_ROOT/deploy/config.ini.example" "$CONFIG_DIR/config.ini"
-  echo "Created $CONFIG_DIR/config.ini — edit broker/queues and credentials before start."
+  echo "Created $CONFIG_DIR/config.ini — edit SP-API/ES credentials before start."
 fi
 
 mkdir -p /etc/conf.d "$CONFIG_DIR/logs" "$CONFIG_DIR/data"
@@ -68,7 +68,7 @@ echo "Done. Next steps (as ${APP_USER} or root):"
 echo "  1. Edit /etc/conf.d/em_celery"
 echo "     - CELERY_CATALOG_QUEUES / CELERY_OFFER_QUEUES"
 echo "     - CELERY_CATALOG_CONCURRENCY / CELERY_OFFER_CONCURRENCY"
-echo "  2. Edit ${CONFIG_DIR}/config.ini (broker, SP-API, ES credentials)"
+echo "  2. Edit ${CONFIG_DIR}/config.ini (SP-API, ES credentials)"
 echo "  3. systemctl enable --now em-spapi-celery-catalog-worker em-spapi-celery-offer-worker"
 echo "  4. journalctl -u em-spapi-celery-catalog-worker -f"
 echo "     journalctl -u em-spapi-celery-offer-worker -f"

@@ -3,7 +3,6 @@
 import datetime
 import time
 
-from sentry_sdk import capture_exception
 from sp_api.base.exceptions import SellingApiForbiddenException, SellingApiBadRequestException
 
 from dropshipping.spapi.exceptions import SellingApiInvalidAsinException
@@ -142,10 +141,7 @@ class SpapiUpdateItemOffersTask():
         logger.debug('[OfferSaveFailed] Fetched: %s', offers)
     except Exception as e:
       logger.debug('[OfferSaveFailed] Fetched: %s', offers)
-      try:
-        capture_exception(e)
-      except Exception:
-        pass
+      logger.exception(e)
 
     self._record_stats(
       successful_asins=successful_asins if saved else 0,

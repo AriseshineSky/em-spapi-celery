@@ -28,6 +28,20 @@ from dropshipping.signals import es_unavailable
 from dropshipping import logger
 
 
+def make_elasticsearch_client(host, port, user=None, password=None, **kwargs):
+    """Build elasticsearch-py 7.x client for an ES 7.17 cluster."""
+    port = int(port) if port else 9200
+    if isinstance(host, str) and host.startswith(('http://', 'https://')):
+        url = host
+    else:
+        url = 'http://{}:{}'.format(host, port)
+    options = {'retry_on_timeout': True}
+    options.update(kwargs)
+    if user or password:
+        options['http_auth'] = (user or '', password or '')
+    return Elasticsearch([url], **options)
+
+
 class EsServerError(Exception):
     pass
 
@@ -87,9 +101,7 @@ class EsService(object):
         self.user = user
         self.password = password
 
-        self.esclient = Elasticsearch(
-            hosts=host, port=port, http_auth=(user, password),
-            retry_on_timeout=True)
+        self.esclient = make_elasticsearch_client(host, port, user, password)
         self.active = True
 
     def is_active(self):

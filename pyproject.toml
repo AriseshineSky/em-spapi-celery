@@ -10,11 +10,11 @@ dependencies = [
     "python-dateutil",
     "python-telegram-bot==12.8.0",
     "urllib3<2",
-    "sentry-sdk",
     "redis",
     "PyPyDispatcher",
     "pint",
     "requests",
+    "elasticsearch>=7.17.0,<8.0.0",
     "dropshipping",
     "cmutils",
 ]

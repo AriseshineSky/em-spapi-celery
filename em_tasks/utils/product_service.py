@@ -3,7 +3,6 @@ import time
 import sys
 import json
 
-from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 from elasticsearch.client import IndicesClient
 from elasticsearch.exceptions import RequestError
@@ -14,7 +13,7 @@ from elasticsearch.exceptions import SSLError
 from elasticsearch.exceptions import TransportError
 from elasticsearch.exceptions import ElasticsearchException
 
-from dropshipping.utils.es_service import es_retry
+from dropshipping.utils.es_service import es_retry, make_elasticsearch_client
 
 from em_tasks import logger
 
@@ -27,7 +26,7 @@ class ProductService(object):
     self.password = password
     self.max_retry = max_retry
 
-    self.esclient = Elasticsearch(hosts=host, port=port, http_auth=(user, password))
+    self.esclient = make_elasticsearch_client(host, port, user, password)
 
   def _needs_shard_defaults(self, settings_section):
     if not isinstance(settings_section, dict):
@@ -180,7 +179,6 @@ class ProductService(object):
       common_args = {
         '_op_type': 'index',
         '_index': indice_name,
-        '_type': '_doc'
       }
 
       for product in products:
@@ -212,7 +210,6 @@ class ProductService(object):
   def load_products(self, indice_name, options = {}):
     params = {
       'index': indice_name,
-      'doc_type': '_doc',
       'size': 1500,
       'query': {'query': {'match_all': {}}}
     }
@@ -325,7 +322,6 @@ class ProductService(object):
       actions.append({
         '_op_type': 'delete',
         '_index': indice_name,
-        '_type': '_doc',
         '_id': product_id
       })
 
