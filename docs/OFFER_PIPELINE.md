@@ -155,7 +155,7 @@ Worker 的 `-Q` 只需写**逻辑队列名**（无后缀），如 `SpapiItemOffe
 
 ### 4.3 Celery 调度
 
-- `rate_limit='8/m'`：每个 worker 进程每分钟最多 8 条 offer task
+- `rate_limit='8/m'`：每个 **Worker 子进程** 每分钟最多 8 条 offer task（多进程**不共享**计数，见 [SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md)）
 - `acks_late=True`：执行成功后才 ACK
 - `worker_prefetch_multiplier=1`：配合优先级，避免 prefetch 占满低优消息
 

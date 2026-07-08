@@ -84,6 +84,8 @@ Documentation
 
 - [技术文档（架构、流程图、CLI、配置）](docs/TECHNICAL.md)
 - [程序入口指南](docs/ENTRY_POINTS.md)
+- [SP-API 核心（请求与返回）](docs/SPAPI_CORE.md)
+- [SP-API 限流与 Celery 多进程](docs/SPAPI_RATE_LIMITING.md)
 - [Offer 端到端流程（入队 → 写 ES）](docs/OFFER_PIPELINE.md)
 - [同步拉取 Offer（spapi_fetch_item_offers_sync）](docs/SYNC_FETCH_OFFERS.md)
 - [Redis 优先级队列机制](docs/PRIORITY_QUEUE.md)

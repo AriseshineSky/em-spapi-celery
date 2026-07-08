@@ -7,6 +7,8 @@
 | 文档 | 内容 |
 |------|------|
 | [ENTRY_POINTS.md](./ENTRY_POINTS.md) | 程序入口、CLI / Worker 启动、目录职责、学习顺序 |
+| [SPAPI_CORE.md](./SPAPI_CORE.md) | SP-API 如何发起请求、返回结构与转换 |
+| [SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md) | SP-API 限流、Celery 多进程与速率协调 |
 | [OFFER_PIPELINE.md](./OFFER_PIPELINE.md) | Offer 从入队到写 ES 的逐步代码走读 |
 | [SYNC_FETCH_OFFERS.md](./SYNC_FETCH_OFFERS.md) | 同步脚本 `spapi_fetch_item_offers_sync`（不经 Celery） |
 | [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md) | Redis 优先级子队列（`:9` → bulk）机制 |
@@ -330,6 +332,8 @@ Sender 自动写入：
 
 ## 6. 核心模块
 
+> SP-API 请求/响应细节见 [SPAPI_CORE.md](./SPAPI_CORE.md)。限流与多进程协调见 [SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md)。
+
 ### 6.1 `Spapi`（`em_tasks/spapi/__init__.py`）
 
 | 方法 | SP-API | 说明 |
@@ -386,6 +390,8 @@ Elasticsearch 封装：`ensure_indice`、`search_products`、`save_products`（b
 ---
 
 ## 7. 异常处理
+
+> 限流（429）与 Celery 多进程下的速率协调详见 [SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md)。
 
 三层重试 / 处置结构：
 

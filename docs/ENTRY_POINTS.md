@@ -225,6 +225,8 @@ em-spapi-celery/
 3. **[OFFER_PIPELINE.md](./OFFER_PIPELINE.md)** — 从入队到写 ES 逐步走读
 4. **`em_celery/tasks/spapi_update_item_offers_task.py`** — Celery 层异常与 rate limit
 5. **`em_tasks/tasks/spapi_update_item_offers_task.py`** — 核心业务
-6. **[PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md)** — 优先级子队列机制
-7. **`em_celery/__init__.py`** — 配置与外部依赖接入
-8. **`deploy/bin/run-worker.sh` + systemd unit** — 生产部署
+6. **[SPAPI_CORE.md](./SPAPI_CORE.md)** — SP-API 如何发起请求、返回什么、如何转换
+7. **[SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md)** — 限流、Celery 多进程如何（不）协调速率
+8. **[PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md)** — 优先级子队列机制
+9. **`em_celery/__init__.py`** — 配置与外部依赖接入
+10. **`deploy/bin/run-worker.sh` + systemd unit** — 生产部署
