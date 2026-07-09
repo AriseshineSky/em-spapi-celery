@@ -83,22 +83,62 @@ SP-API 使用**令牌桶**：
 
 ### 1.5 Celery 官方模型
 
-Celery Worker 默认使用 **prefork** 池：`--concurrency N` 会 fork **N 个子进程**，每个子进程独立从 Redis 取 task、独立执行。
+Celery Worker 默认使用 **prefork** 池：`--concurrency N` 会 fork **N 个子进程** 执行 task；**从 Redis 取消息、限速** 发生在 Worker **主进程的 Consumer** 里，不在子进程。
 
-官方建议对 I/O 密集型 task（如 HTTP API）使用多进程提高吞吐，但应配合 **task 级 `rate_limit`** 或外部限流，避免打满下游。
+官方建议对 I/O 密集型 task 配合 **task 级 `rate_limit`**，避免打满下游。
 
-**重要：** Celery 的 `rate_limit` 是 **每个 Worker 子进程各自维护** 的令牌桶，**不是**跨进程、跨主机的全局限速。
+**重要：** Celery 的 `rate_limit` 是 **每个 Worker 实例**（一次 `celery worker` 命令）共享 **一个** TokenBucket，**不是**每个子进程各一桶，也 **不是** 跨主机全局限速。详见 §3 与 [Celery Task.rate_limit](https://docs.celeryq.dev/en/stable/userguide/tasks.html#Task.rate_limit)。
 
-### 1.6 当前配置 vs 官方默认（差距一览）
+### 1.6 两套 Token Bucket：概念一致，桶不是同一个
+
+Celery Layer 0 与 Amazon SP-API 都使用 **Token Bucket（令牌桶）** 算法，但它们是 **不同层、不同作用域** 的两套桶：
+
+| 对比项 | Celery `rate_limit`（Layer 0） | Amazon SP-API（服务端） |
+|--------|-------------------------------|-------------------------|
+| **算法** | Token Bucket（Kombu `TokenBucket`） | Token Bucket（官方 Usage Plan） |
+| **位置** | Worker 主进程 Consumer 内 | Amazon 网关 / 配额服务 |
+| **作用** | 控制 task **何时开始执行**（本地节流） | 控制 HTTP **是否接受**（429 拒绝） |
+| **协调范围** | **单 Worker 实例** | **全局**（同一 refresh_token + app + operation） |
+| **Rate** | `6/m` → fill_rate = 0.1 token/s | Offer 默认 0.1 req/s；Catalog 默认 2 req/s |
+| **Burst / capacity** | Celery **固定 capacity=1** | Offer burst=1；Catalog burst=2 |
+| **桶空时** | `timer.call_after(hold)` **等待**，推迟启动 task | 返回 **HTTP 429**，客户端退避重试 |
+| **均匀分布** | 官方：token 匀速补充，task 在时间段内 **均匀启动** | 官方：建议均匀发请求，避免瞬时打满 |
+| **与 Sender 关系** | **无关**；读 task 装饰器上的 `rate_limit` | **无关**；所有 HTTP 消费者共享 |
+
+```mermaid
+flowchart LR
+  subgraph Local["本机 Celery Worker 实例"]
+    TB_C["Celery TokenBucket<br/>rate_limit=6/m"]
+    POOL["子进程池 concurrency=N"]
+    TB_C -->|"有 token 才 dispatch"| POOL
+  end
+
+  subgraph Remote["Amazon"]
+    TB_A["SP-API Token Bucket<br/>R=0.1 B=1"]
+  end
+
+  POOL -->|HTTP| TB_A
+  TB_A -->|429 桶空| RETRY["Layer 1–3 重试"]
+```
+
+**结论：**
+
+1. **算法家族一致**（都是 token bucket），所以用 `rate_limit=6/m` 对齐 `0.1 req/s` 是合理思路。
+2. **不是同一个桶**——Celery 桶只在本地 Worker 内生效；多台 Worker、同步脚本、其他服务 **不消耗** Celery 的 token，但仍 **消耗** Amazon 的 token。
+3. **`concurrency` 管并行执行，不乘在 `rate_limit` 上**——`6/m` 是整台 Worker 每分钟最多 **启动** 6 次 task；`concurrency=4` 只表示最多 4 个 task **同时跑**，若 task 耗时长，仍可能出现多路 in-flight HTTP（与 Amazon **burst** 相关）。
+
+### 1.7 当前配置 vs 官方默认（差距一览）
 
 假设 **1 个 seller 凭证 + 1 个 app**，推荐 `CELERY_OFFER_CONCURRENCY=1`、`CELERY_CATALOG_CONCURRENCY=2`，单机部署：
 
-| API | 官方持续上限 | 本项目 Layer 0 峰值（单机） | 是否对齐 |
-|-----|-------------|---------------------------|----------|
-| Offer batch | **6/min**（0.1/s） | 1 × 6/min = **6/min** | **是** |
-| Offer burst | **1** 并发 token | 最多 **1** 子进程同时调 API | **是** |
-| Catalog | **2/s**（120/min） | 2 × 1/s = **2/s** | **持续速率对齐** |
-| Catalog burst | **2** | 2 子进程可同时各 1 次 | **是**（单机） |
+| API | 官方持续上限 | 本项目 Layer 0（单机 1 实例） | 是否对齐 |
+|-----|-------------|------------------------------|----------|
+| Offer batch | **6/min**（0.1/s） | rate_limit **6/m** → **6/min 启动** | **是** |
+| Offer burst | **1** 并发 token | concurrency=**1** → in-flight ≤ 1 | **是** |
+| Catalog | **2/s**（120/min） | rate_limit **1/s** → **1/s 启动**（偏保守） | 可持续略低于上限 |
+| Catalog burst | **2** | concurrency=**2** → in-flight ≤ 2 | **是**（单机） |
+
+> Catalog 若要在单 Worker 上打满 2/s 持续速率，可将 `rate_limit` 改为 `2/s`；当前 `1/s` + `concurrency=2` 更偏安全（ sustained 1/s，burst 形态仍可达 2 路 in-flight）。
 
 ---
 
@@ -112,8 +152,8 @@ flowchart TB
   end
 
   subgraph Celery["Celery Worker（prefork）"]
-    RL["Layer 0: rate_limit<br/>offer 6/m · catalog 1/s<br/>每子进程独立"]
-    PF["prefetch_multiplier=1<br/>每进程最多预取 1 条"]
+    RL["Layer 0: rate_limit<br/>offer 6/m · catalog 1/s<br/>每 Worker 实例一个 TokenBucket"]
+    PF["prefetch_multiplier=1<br/>每子进程最多预取 1 条"]
   end
 
   subgraph Task["业务 Task"]
@@ -139,16 +179,18 @@ flowchart TB
 |------|------|----------|------|----------|
 | **入队 QPS** | `*_task_sender.py`、`-q` | 手动指定 QPS | `sleep(1/qps - elapsed)` | **仅该 Sender 进程** |
 | **队列背压** | `*_send_from_es.py` | 队列深度 ≥ 10000 | `sleep(600)` 暂停入队 | 按 Redis 队列名，**不入队**而非限速消费 |
-| **Layer 0** | `@app.task(rate_limit=...)` | 进程内 token 耗尽 | Celery 推迟执行该进程的下一条 task | **每个 Worker 子进程** |
+| **Layer 0** | `@app.task(rate_limit=...)` | Worker 实例内 token 耗尽 | Consumer 用 timer **延迟 dispatch** 下一条 task | **每个 Worker 实例**（主进程 Consumer） |
 | **Layer 1** | `em_tasks/spapi/__init__.py` | 429 / 5xx / 暂时不可用 | `sleep(max_retries)`，最多 12 次 | **该 task 所在子进程** |
 | **Layer 2** | `SpapiUpdate*Task.run()` | Layer 1 仍抛 `exceptions_to_retry` | `sleep(3)` 后重试整个 API 调用 | **该 task 所在子进程** |
 | **Layer 3** | `em_celery/tasks/spapi_update_*_task.py` | Layer 2 仍失败 | `Reject(requeue=True)` 消息回队列 | 重新排队，**任意** Worker 可再次消费 |
 
 ---
 
-## 3. Celery `rate_limit` 与多进程
+## 3. Celery `rate_limit` 实现机制
 
-### 3.1 Task 注解
+### 3.1 Worker 如何知道限速？（不读 Sender）
+
+限速值来自 **task 装饰器**，Worker 启动注册 task 时读取；Sender 的 `apply_async()` **不传** rate_limit。
 
 ```python
 # em_celery/tasks/spapi_update_item_offers_task.py
@@ -158,55 +200,133 @@ flowchart TB
 @app.task(..., rate_limit='1/s')
 ```
 
-含义（Celery 语义）：
+含义（[Celery 官方](https://docs.celeryq.dev/en/stable/userguide/tasks.html#Task.rate_limit)）：
 
-- **`6/m`**：该 **Worker 子进程** 每分钟最多 **开始执行** 6 次 `spapi_update_item_offers`（对齐 0.1 req/s）
-- **`1/s`**：该子进程每秒最多 1 次 `spapi_update_catalog_items`
+- **`6/m`**：该 **Worker 实例** 每分钟最多 **开始执行** 6 次此 task（≈ 每 10s 启动 1 次）
+- **`1/s`**：该 Worker 实例每秒最多 **开始执行** 1 次此 task
+- 限速的是 **task 启动**，不是 Sender 入队速度
 
-### 3.2 多进程如何**不**协调
+### 3.2 Token Bucket 内部实现（Celery 5.x 源码）
 
-prefork 下 **N 个子进程 = N 个独立限速器**，彼此不共享计数器：
+实现位于 Worker **主进程** Consumer（非 fork 子进程）：
+
+| 组件 | 位置 | 作用 |
+|------|------|------|
+| `rate('6/m')` | `celery/utils/time.py` | 解析为 fill_rate：`6/60 = 0.1` token/s |
+| `TokenBucket(fill_rate, capacity=1)` | `kombu/utils/limits.py` | 令牌桶；**capacity 固定为 1** |
+| `task_buckets[task_name]` | `celery/worker/consumer/consumer.py` | 每个 task 名一个桶 |
+| `task_message_handler` | `celery/worker/strategy.py` | 收到消息后检查桶 |
+| `_limit_task` / `_schedule_bucket_request` | `consumer.py` | 无 token 则等待 |
+
+**消息到达后的流程：**
+
+```mermaid
+sequenceDiagram
+  participant Redis
+  participant Consumer as Worker 主进程 Consumer
+  participant Bucket as TokenBucket
+  participant Pool as 子进程池
+
+  Redis->>Consumer: BRPOP 取到 task 消息
+  Consumer->>Bucket: 有 rate_limit?
+  alt 有 token
+    Bucket->>Consumer: can_consume(1) = true
+    Consumer->>Pool: dispatch task 执行
+  else 无 token
+    Bucket->>Consumer: expected_time(1) = hold 秒
+    Consumer->>Consumer: timer.call_after(hold, 重试)
+    Note over Consumer: task 在桶队列中等待，尚未进入子进程
+  end
+```
+
+**均匀分布如何实现：**
+
+Celery 文档说明：token 在时间段内 **匀速补充**（非「攒够 N 个再突发」）。例如 `6/m`：
+
+- fill_rate = 0.1 token/s → 平均 **每 10s 释放 1 个启动名额**
+- capacity = 1 → 同一时刻最多 **预放行 1 个** task 启动
+- 无 token 时：`expected_time()` 计算等待秒数，`timer.call_after(hold, ...)` 到期后再试
+
+这与 SP-API 服务端桶的 **rate + burst** 思想类似，但 Celery **写死 capacity=1**，且只在 **单 Worker 实例** 内生效。
+
+### 3.3 与 `concurrency` 的关系（易混淆）
+
+| 配置 | 控制对象 | 与 SP-API 对应 |
+|------|----------|----------------|
+| `rate_limit` | 单位时间内 **启动** 多少 task | 对齐 **Rate**（持续 req/s） |
+| `concurrency` | 最多 **同时执行** 多少 task | 对齐 **Burst / in-flight** |
+
+二者 **不相乘**。示例（单 Worker 实例）：
 
 ```
-单机 offer worker，CELERY_OFFER_CONCURRENCY=4：
+rate_limit=6/m, concurrency=4
 
-  子进程 ForkPoolWorker-1  →  8 task/min
-  子进程 ForkPoolWorker-2  →  8 task/min
-  子进程 ForkPoolWorker-3  →  8 task/min
-  子进程 ForkPoolWorker-4  →  8 task/min
-  ─────────────────────────────────────
-  理论峰值（仅 Layer 0）   →  32 task/min ≈ 32 次 batch HTTP/min
+  启动速率：整台 Worker 合计 6 次/min（不是 6×4）
+  同时执行：最多 4 个 task 并行（若单个 task 耗时长，可出现多路 HTTP in-flight）
 ```
 
-若部署 **多台** offer worker、或本地 `--concurrency 1` 与生产 `--concurrency 4` 同时跑，**各自**按 `8/m × concurrency × 机器数` 叠加，**项目内没有 Redis/DB 全局令牌桶** 来对齐 Amazon 配额。
+因此 Offer 要对齐 Amazon **burst=1**，应 **`concurrency=1`**；仅调 `rate_limit` 无法保证同一时刻只有 1 路 HTTP。
 
-### 3.3 与 Celery 官方建议的关系
+### 3.4 多 Worker 实例如何叠加
+
+**每个 Worker 实例各自一个 TokenBucket**，彼此不共享：
+
+```
+2 台 offer worker，各 rate_limit=6/m：
+
+  Worker-A  →  6 task/min 启动
+  Worker-B  →  6 task/min 启动
+  ─────────────────────────────
+  集群合计  →  12 次 batch HTTP/min  →  超过 Amazon 默认 6/min
+```
+
+公式（持续速率）：
+
+```
+集群 task 启动速率  ≈  Σ(每台 Worker 实例的 rate_limit)
+
+Offer 对齐 0.1 req/s：
+  N_workers × (rate_limit_per_min / 60)  ≤  0.1
+  ⇒  rate_limit_per_min  ≤  6 / N_workers
+```
+
+**in-flight / burst（与 concurrency 相关）：**
+
+```
+集群 in-flight HTTP（同一 operation）≈  Σ(每台 Worker 的 concurrency)
+Offer：应 ≤ 1（Amazon burst=1）
+Catalog：单机可 ≤ 2（Amazon burst=2）；多机叠加需减小
+```
+
+项目内 **没有** Redis/DB 全局 TokenBucket 对齐 Amazon 配额；Layer 1–3 的 429 重试是 **Amazon 桶空** 后的被动处理。
+
+### 3.5 与 Celery 官方建议及本项目配置
 
 | 官方建议 | 本项目做法 |
 |----------|------------|
-| I/O 型 task 可用多进程 | `CELERY_OFFER_CONCURRENCY=4`（示例配置） |
-| 用 `rate_limit` 保护下游 | offer `8/m`、catalog `1/s` |
-| 避免单进程 prefetch 过多 | `worker_prefetch_multiplier = 1` |
-| 全局限速需额外机制 | **未实现**；靠运维拆分 worker + 429 重试 |
+| I/O 型 task 配合 `rate_limit` | offer `6/m`、catalog `1/s` |
+| 限速为 **per worker instance** | 见 §3.4，多机需反算 |
+| 避免 prefetch 过多 | `worker_prefetch_multiplier = 1` |
+| 全局限速需额外机制 | **未实现**；靠减 Worker 副本 + 429 重试 |
 
-`worker_prefetch_multiplier=1`（`em_celery/config.py`）保证每个子进程最多预取 1 条未 ACK 消息，避免一个进程 hoard 大量 task；**不等于** SP-API 全局限速。
+`worker_prefetch_multiplier=1`（`em_celery/config.py`）保证每个子进程最多预取 1 条未 ACK 消息；**不等于** SP-API 全局限速。
 
-### 3.4 其他 Worker 配置
+### 3.6 其他 Worker 配置
 
 | 配置 | 值 | 与限流关系 |
 |------|-----|------------|
 | `task_acks_late=True` | 执行成功才 ACK | 失败可 requeue，不丢消息 |
 | `task_reject_on_worker_lost=True` | Worker 崩溃时 requeue | 避免 silent drop |
-| `acks_late` + `Reject(requeue=True)` | 429 耗尽重试后 | task 回到 Redis，可能再次被任意进程消费 |
+| `acks_late` + `Reject(requeue=True)` | 429 耗尽重试后 | task 回到 Redis，可能再次被任意 Worker 消费 |
 
 生产并发来自 `/etc/conf.d/em_celery`（见 `deploy/conf.d/em_celery.example`）：
 
 ```bash
-CELERY_CATALOG_CONCURRENCY=2   # catalog 子进程数
-CELERY_OFFER_CONCURRENCY=4     # offer 子进程数
+CELERY_CATALOG_CONCURRENCY=2   # catalog 子进程并行上限
+CELERY_OFFER_CONCURRENCY=1     # offer 与 burst=1 对齐
 ```
 
-本地开发 `local_dev/run_local_worker.sh` 固定 **`--concurrency 1`**，与生产行为不同，限流更保守。
+本地开发 `local_dev/run_local_worker.sh` 固定 **`--concurrency 1`**。
 
 ---
 
@@ -314,13 +434,14 @@ def is_queue_full(self):
 
 在 **仅考虑 Layer 0**、且每个 task 满 20 ASIN、API 一次成功的前提下：
 
-| 场景 | Offer HTTP batch/min | Catalog HTTP/min | 对比官方默认 |
-|------|----------------------|------------------|--------------|
-| 1 子进程 | 8 | 60 | offer **6** / catalog **120** |
-| 4 子进程（示例生产） | 32 | 120（2 子进程 × 1/s） | offer **6** / catalog **120** |
-| 2 台 offer worker × concurrency 4 | 64 | — | offer **6** |
+| 场景 | Offer 启动速率（Layer 0） | Catalog 启动速率 | 对比官方默认 |
+|------|---------------------------|------------------|--------------|
+| 1 台 offer worker（6/m） | 6 batch/min | — | offer **6/min** ✓ |
+| 2 台 offer worker（各 6/m） | 12 batch/min | — | offer **6/min** ✗ |
+| 1 台 catalog worker（1/s） | — | 60/min（1/s） | catalog **120/min**（偏保守） |
+| 1 台 catalog worker（2/s） | — | 120/min | catalog **120/min** ✓ |
 
-实际会更低：429 重试、ES 写入、空 ASIN、Reject requeue 都会拉低有效 QPS。上表说明 **Layer 0 峰值可远高于官方 sustained 上限**（尤其 Offer），429 会由 Layer 1–3 被动消化，但队列延迟与 requeue 成本上升。对齐方法见 §8.2–§8.4。
+实际会更低：429 重试、ES 写入、空 ASIN、Reject requeue 都会拉低有效 QPS。**in-flight HTTP** 还受 `concurrency` 与 task 耗时影响，见 §3.3。对齐方法见 §8.2–§8.4。
 
 **同步脚本** `spapi_fetch_item_offers_sync` **不受** Celery `rate_limit` 约束，在同一凭证下跑大批量会与 Worker **争抢** Amazon 配额。
 
@@ -331,31 +452,32 @@ def is_queue_full(self):
 ```mermaid
 flowchart LR
   subgraph Has["项目已有的（局部）"]
-    A1["Celery rate_limit<br/>每子进程"]
+    A1["Celery TokenBucket<br/>每 Worker 实例"]
     A2["prefetch=1<br/>每子进程"]
     A3["429 重试 + Reject requeue"]
     A4["Sender -q / 队列背压"]
   end
 
   subgraph Missing["项目没有的（全局）"]
-    B1["跨进程 Redis 令牌桶"]
+    B1["跨 Worker Redis 令牌桶<br/>对齐 Amazon 单桶"]
     B2["跨主机分布式限流"]
-    B3["按 Amazon Usage Plan 动态调速"]
+    B3["按 x-amzn-RateLimit-Limit 动态调速"]
     B4["同一 refresh_token 的进程间互斥"]
   end
 
   Has --> Redis[(Redis 队列)]
-  Missing -.->|未实现| Amazon[Amazon SP-API 配额]
-  Redis --> Workers[多个 Worker 子进程 / 多机]
+  Missing -.->|未实现| Amazon[Amazon SP-API Token Bucket]
+  Redis --> Workers[多个 Worker 实例 / 多子进程]
   Workers --> Amazon
 ```
 
 **结论：**
 
-1. **Worker 子进程之间不协调 SP-API 速率**；协调发生在「Redis 队列 + 各进程独立 rate_limit + 429 被动退避」这一组合上。
-2. **多机 Worker 共享同一 `[spapi]` 凭证时**，Amazon 配额是共享的，Celery 限速是**相乘**关系，需运维按机器数反算 `rate_limit` 与 `concurrency`。
-3. **Sender 与 Worker 不协调**；除非 Sender 用 `-q` 或队列背压，否则 Worker 消费速度仅受自身 `rate_limit` 与并发数限制。
-4. **`Reject(requeue=True)`** 在持续 429 时会让 task 在队列中循环，可能与其他新 task 交错，**没有**优先级降级或 dead-letter（offer 仅有 Telegram 计数告警）。
+1. **Celery TokenBucket 只在 Worker 实例内生效**；多实例、多机 **各自** 限速，**不共享** Amazon 那一桶。
+2. **Amazon TokenBucket 是全局的**（同一凭证 + operation）；所有 HTTP 消费者叠加，429 由 Layer 1–3 被动退避。
+3. **`rate_limit` 与 `concurrency` 分工不同**：前者管 **启动速率**，后者管 **并行 in-flight**（burst）。
+4. **Sender 与 Worker 不协调**；除非 Sender 用 `-q` 或队列背压，否则入队速度不受 Layer 0 约束。
+5. **`Reject(requeue=True)`** 在持续 429 时会让 task 在队列中循环，**没有** dead-letter（offer 仅有 Telegram 计数告警）。
 
 ---
 
@@ -372,48 +494,52 @@ flowchart LR
 
 ### 8.2 与官方 Usage Plan 对齐（核心公式）
 
-官方限制的是 **HTTP 请求速率**（token），不是 Celery task 条数。对齐时需把 **所有共享同一 refresh_token 的消费者** 算进去：
+官方限制的是 **HTTP 请求速率**（Amazon 服务端 Token Bucket），不是 Celery task 条数。对齐时需把 **所有共享同一 refresh_token 的消费者** 算进去。
+
+**持续速率（Layer 0 — Celery 本地桶）：**
 
 ```
-集群 sustained req/s  ≈  Σ (每台 worker 的 concurrency × 每进程 rate_limit req/s)
+集群 task 启动速率  ≈  Σ(每台 Worker 实例的 rate_limit)
 
-其中：
-  每进程 rate_limit req/s = 1 / interval   （如 8/m → 8/60 ≈ 0.133/s）
+rate_limit 解析：
+  '6/m' → 6/60 = 0.1 次启动/s
+  '1/s' → 1 次启动/s
 ```
 
 **Offer（`getItemOffersBatch`）— 默认 R=0.1 req/s，B=1：**
 
 ```
-Σ(concurrency) × (rate_limit_per_min / 60)  ≤  R
-⇒  rate_limit_per_min  ≤  R × 60 / Σ(concurrency)
-⇒  默认 R=0.1 时：rate_limit_per_min  ≤  6 / Σ(concurrency)
+N_workers × (rate_limit_per_min / 60)  ≤  R
+⇒  rate_limit_per_min  ≤  6 / N_workers
 ```
 
-| 集群 offer 子进程总数 Σ(concurrency) | 每进程 `rate_limit` 上限（持续） | 备注 |
-|--------------------------------------|----------------------------------|------|
+| 集群 offer Worker 实例数 | 每实例 `rate_limit` 上限 | 备注 |
+|--------------------------|--------------------------|------|
 | 1 | **6/m** | 与 0.1 req/s 对齐 |
 | 2 | **3/m** | |
-| 4（单机示例） | **1/m** 或 **2/m** 且 concurrency 降为 2 | 当前 8/m×4 严重超标 |
-| 8（2 机×4） | **≤1/m** |  practically 应 **concurrency=1~2 + 全局锁** |
+| 4 | **1/m** 或 减少 Worker 副本 | |
 
-**Burst=1 的额外约束：** 即使平均速率合格，**同一时刻 >1 个进程**同时调用仍可能 429。Offer 侧更安全的形态是：
+**Burst / in-flight（`concurrency`，非 rate_limit）：**
 
-- **全集群 in-flight offer HTTP ≤ 1**（concurrency=1 或 Redis 分布式信号量），且
-- 平均间隔 ≥ **1/R ≈ 10s**（R=0.1 时）
+```
+集群 in-flight HTTP  ≈  Σ(每台 Worker 的 concurrency)   （task 耗时不为 0 时）
+Offer：全集群应 ≤ 1（Amazon burst=1）→ CELERY_OFFER_CONCURRENCY=1
+平均启动间隔 ≥ 1/R ≈ 10s（R=0.1 时），由 rate_limit=6/m 保证
+```
 
 **Catalog（`searchCatalogItems` by ASIN）— 默认 R=2 req/s，B=2：**
 
 ```
-Σ(concurrency) × (rate_limit_per_sec)  ≤  2   （account-application 维度）
+N_workers × rate_limit_per_sec  ≤  2   （持续启动速率）
+Σ(concurrency)  ≤  2               （单机 burst；多机需更小）
 ```
 
-| 集群 catalog 子进程总数 | 每进程 `rate_limit` 上限 | 当前 1/s × N |
-|-------------------------|--------------------------|--------------|
-| 1 | 2/s | OK |
-| 2 | 1/s | 与现配置一致 |
-| 4 | 0.5/s（30/m） | 2 机×concurrency 2 时会超 |
+| 集群 catalog Worker 数 | 每实例 rate_limit（持续打满 2/s） | concurrency（burst） |
+|------------------------|-----------------------------------|----------------------|
+| 1 | **2/s**（或保守 **1/s**） | **2** |
+| 2 | **1/s** | **1** 或 各 **1** |
 
-Catalog burst=2 允许 **短时 2 并发**；多机各自 2 并发会在桶空时叠加触发 429。
+当前配置 `1/s` + `concurrency=2`：** sustained 1/s（保守）**，burst 形态可达 2 路 in-flight。
 
 ### 8.3 配置演算示例
 
@@ -453,8 +579,8 @@ flowchart TD
   Q[要对齐官方限流] --> O{API 类型?}
   O -->|Offer burst=1| O1["优先 concurrency=1<br/>全集群仅 1 路 in-flight"]
   O -->|Catalog burst=2| C1["单机 concurrency≤2<br/>多机需降 rate 或减副本"]
-  O1 --> O2["用 rate_limit 填平均速率<br/>6/min ÷ 进程数"]
-  C1 --> C2["rate_limit × concurrency ≤ 2/s"]
+  O1 --> O2["rate_limit=6/m 填平均速率<br/>concurrency=1 填 burst"]
+  C1 --> C2["rate_limit 填 sustained<br/>concurrency 填 in-flight ≤2"]
   O2 --> T{吞吐仍不够?}
   C2 --> T
   T -->|是| T1["加 seller 授权 / 向 Amazon 申请提额<br/>而非盲目加 concurrency"]
@@ -466,16 +592,16 @@ flowchart TD
 | **队列消化** | 多路并行，Redis 积压下降快 | 单路串行，积压消化慢 |
 | **Offer burst=1** | 多进程极易同时 429 | 与 token 桶匹配 |
 | **CPU** | SP-API task 以 I/O 为主，CPU 往往非瓶颈 | 进程少，内存占用低 |
-| **Celery rate_limit** | 总吞吐 = N × 每进程 limit，**相乘** | 总吞吐下降，更易合规 |
+| **Celery rate_limit** | 每 **Worker 实例** 一个桶；加实例则 **启动速率相加** | 减实例或降低 rate_limit |
 | **429 重试风暴** | Reject requeue + 多进程重试，放大延迟 | 退避更可控 |
 | **ES 写入** | 略增并行 bulk（通常不是主矛盾） | 影响小 |
 
 **推荐基线（默认 Usage Plan、单 seller 凭证）：**
 
-| Worker 类型 | concurrency | rate_limit（每进程） | 说明 |
-|-------------|-------------|----------------------|------|
-| Offer | **1**（全集群 offer 合计 1 更稳） | **5–6/m** | 对齐 0.1/s；burst=1 时不并行 HTTP |
-| Catalog | **1–2**（单机） | **1/s**（Σ=2 时）或 **0.5/s**（Σ=4 时） | 对齐 2/s account-application |
+| Worker 类型 | concurrency | rate_limit（每 Worker 实例） | 说明 |
+|-------------|-------------|------------------------------|------|
+| Offer | **1**（全集群合计 1 更稳） | **5–6/m** | rate 对齐 0.1/s；concurrency 对齐 burst=1 |
+| Catalog | **2**（单机） | **1/s**（保守）或 **2/s**（打满） | concurrency 对齐 burst=2 |
 | 本地开发 | **1**（已固定） | 同生产或更保守 | `run_local_worker.sh` |
 
 **何时可以加大 concurrency？**
@@ -495,11 +621,11 @@ flowchart TD
 | 官方建议 | 本项目现状 | 对齐方向 |
 |----------|------------|----------|
 | 429 指数退避 + jitter | 固定 `sleep(max_retries)`、`sleep(3)` | 可改为读 `Retry-After` / 指数退避（需改代码） |
-| 不 hardcode 定时器 | Celery `rate_limit` 固定 8/m、1/s | 按 §8.2 公式重算；或用响应头动态调速 |
 | 读 `x-amzn-RateLimit-Limit` | **未解析** | 日志/指标记录该头，用于验证实际 R |
-| 均匀分布请求 | 多进程 + Reject requeue 易造成突发 | concurrency=1、Sender `-q`、全局限速 |
+| 不 hardcode 定时器 | Celery `rate_limit` 固定 6/m、1/s | 按 §8.2 公式反算；或读响应头动态调速 |
+| 均匀分布请求 | Celery TokenBucket 匀速放 token；Reject requeue 仍可能突发 | concurrency=1、Sender `-q` |
 | 用 batch API 减调用次数 | 已 batch 20 ASIN | ✓ 已符合 |
-| 全集群单桶协调 | 无 Redis 全局 limiter | 运维减副本，或未来实现分布式 token bucket |
+| 全集群单桶协调 | Celery 桶 ≠ Amazon 桶；无跨 Worker Redis limiter | 减副本，或实现分布式 token bucket |
 
 ### 8.6 如何验证实际配额（运维清单）
 
@@ -511,11 +637,11 @@ flowchart TD
 
 ### 8.7 本地 vs 生产
 
-| 项 | 本地 `run_local_worker.sh` | 生产示例 | 对齐官方默认 |
+| 项 | 本地 `run_local_worker.sh` | 生产推荐 | 对齐官方默认 |
 |----|---------------------------|----------|--------------|
-| concurrency | 1 | offer 1 / catalog 2 | 与 burst 对齐 |
-| rate_limit | 6/m、1/s | 同上 | offer **6/m**（Σ=1）；catalog **1/s**（Σ=2） |
-| 有效 offer 峰值 | 8 batch/min | 32 batch/min（单机） | 目标 **≤6 batch/min**（默认 R=0.1） |
+| concurrency | 1 | offer **1** / catalog **2** | burst 对齐 |
+| rate_limit | 6/m、1/s | 同上 | offer **6/m**（1 实例）；catalog **1/s** 保守 |
+| 有效 offer 启动 | 6 batch/min | 6 × N_workers batch/min | 目标 **≤6/min**（默认 R=0.1） |
 
 ---
 
@@ -540,20 +666,29 @@ flowchart TD
 **Q：官方 `getItemOffersBatch` 限流到底是多少？**  
 A：API Reference 与 [2023 公告](https://github.com/amzn/selling-partner-api-models/discussions/3595) 默认 **0.1 req/s、burst 1**（持续约 **6 batch/min**）。历史上曾为 0.5 req/s。以响应头 `x-amzn-RateLimit-Limit` 为准。
 
-**Q：为什么 concurrency=4 容易 429，即使 rate_limit=8/m？**  
-A：两层原因：① 8/m×4=32/min **远高于** 6/min 的持续上限；② burst=1 时 **任意 2 个进程同时** 打 API 就可能有一个 429，与平均速率无关。
+**Q：Celery 和 SP-API 都是用 Token Bucket 吗？**  
+A：**算法上都是 Token Bucket**，但不是同一个桶。Celery 在 Worker 主进程用 Kombu `TokenBucket` **本地**限制 task **启动**；Amazon 在服务端 **全局**限制 HTTP **接受**。Celery 桶空 → 等待 timer；Amazon 桶空 → 429。
+
+**Q：为什么 concurrency=4 容易 429，即使 rate_limit=6/m？**  
+A：`rate_limit` 是 **每 Worker 实例** 6/min 启动，**不乘** concurrency。429 主因是 **concurrency>1** 导致多路 HTTP **同时 in-flight**，超过 Offer **burst=1**；与平均速率无关。
 
 **Q：Catalog concurrency=2、rate_limit=1/s 算对齐吗？**  
-A：**单机**时 2×1/s=2/s，与 account-application 默认 **2 req/s** 一致；burst=2 也匹配。但 **第二台** catalog worker 会翻倍，需降为每进程 0.5/s 或 concurrency=1。
+A：**burst** 对齐（in-flight ≤ 2）。**持续速率** 仅 1/s 启动，低于官方 2/s——偏保守。单机要打满 2/s 可改 `rate_limit='2/s'`。第二台 catalog Worker 会把启动速率 **相加**，需降为各 `1/s` 或 `0.5/s`。
 
-**Q：Celery 官方说多进程，不同进程怎么协调发送速度？**  
-A：Celery 仅 **每进程** `rate_limit`；**全局**协调需自建（Redis 令牌桶、单消费者、或 concurrency=1）。Amazon 侧则是 **seller+app 全局单桶**，与 Celery 进程数无关。
+**Q：Worker 怎么知道发送速度？Sender 要传吗？**  
+A：**不传**。Worker 读 task 装饰器 `rate_limit`；Sender 只负责 `apply_async` 入队。限速发生在 Consumer 从队列取出消息之后、dispatch 到子进程之前。
 
-**Q：`rate_limit='8/m'` 是 8 个 ASIN 还是 8 次 API？**  
-A：**8 条 Celery task**。每条 task 调 **1 次** `getItemOffersBatch`（最多 20 ASIN）。
+**Q：Celery 如何实现均匀分布和等待？**  
+A：Kombu `TokenBucket` 按 fill_rate **匀速补 token**；`can_consume()` 失败时用 `expected_time()` 算等待秒数，`timer.call_after(hold, ...)` 延迟重试。见 §3.2。
+
+**Q：Celery 官方说多进程，不同进程怎么协调？**  
+A：**子进程不各自限速**——限速在 **主进程 Consumer** 的一个 TokenBucket。子进程只负责执行已 dispatch 的 task。**跨 Worker 实例** 不协调，需运维反算或自建 Redis 全局桶。
+
+**Q：`rate_limit='6/m'` 是 6 个 ASIN 还是 6 次 API？**  
+A：**6 条 Celery task 启动**。每条 task 调 **1 次** `getItemOffersBatch`（最多 20 ASIN）。
 
 **Q：priority 队列会影响限流吗？**  
-A：不影响 Layer 0 计数方式；高优 task 仍占用同一子进程的 `rate_limit` 配额。优先级只影响 **从 Redis 取消息的先后顺序**。
+A：不影响 Layer 0；高优 task 与其它 task **共用同一 Worker 实例的 TokenBucket**（按 task 名分桶）。优先级只影响 **从 Redis 取消息的先后顺序**。
 
 **Q：多台 worker 监听同一队列会抢配额吗？**  
 A：会。它们共享 Amazon **同一 token 桶**，但 Celery 限速 **各自独立**，容易叠加超限。
