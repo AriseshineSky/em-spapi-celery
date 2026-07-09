@@ -2,6 +2,7 @@
 """Tests for Redis-backed Celery priority mapping."""
 
 from em_celery.scheduling.priority import (
+    PRIORITY_BULK,
     PRIORITY_CRITICAL,
     PRIORITY_NORMAL,
     REDIS_BROKER_CONSUME_ORDER,
@@ -22,13 +23,14 @@ class _FakeTask:
         return object()
 
 
-def test_user_priority_9_maps_to_broker_9():
-    assert user_to_broker_priority(9) == 9
-    assert user_to_broker_priority(PRIORITY_CRITICAL) == 9
-
-
 def test_user_priority_0_maps_to_broker_0():
     assert user_to_broker_priority(0) == 0
+    assert user_to_broker_priority(PRIORITY_CRITICAL) == 0
+
+
+def test_user_priority_9_maps_to_broker_9():
+    assert user_to_broker_priority(9) == 9
+    assert user_to_broker_priority(PRIORITY_BULK) == 9
 
 
 def test_normal_priority_round_trip():
@@ -44,22 +46,22 @@ def test_normalize_clamps():
 
 def test_dispatch_task_converts_priority():
     task = _FakeTask()
+    dispatch_task(task, priority=0)
+    assert task.last_priority == 0
     dispatch_task(task, priority=9)
     assert task.last_priority == 9
-    dispatch_task(task, priority=1)
-    assert task.last_priority == 1
 
 
-def test_redis_queue_keys_highest_suffix_first():
+def test_redis_queue_keys_highest_first():
     keys = list(iter_redis_priority_queue_keys("SpapiItemOffersUpdate_US"))
-    assert keys[0] == "SpapiItemOffersUpdate_US:9"
-    assert keys[-1] == "SpapiItemOffersUpdate_US"
+    assert keys[0] == "SpapiItemOffersUpdate_US"
+    assert keys[-1] == "SpapiItemOffersUpdate_US:9"
     assert len(keys) == 10
 
 
-def test_broker_consume_order_checks_nine_first():
-    assert REDIS_BROKER_CONSUME_ORDER[0] == 9
-    assert REDIS_BROKER_CONSUME_ORDER[-1] == 0
+def test_broker_consume_order_checks_base_first():
+    assert REDIS_BROKER_CONSUME_ORDER[0] == 0
+    assert REDIS_BROKER_CONSUME_ORDER[-1] == 9
 
 
 def test_base_queue_name_strips_priority_suffix():
@@ -72,3 +74,5 @@ def test_broker_transport_options_use_ascending_steps():
 
     opts = broker_transport_options()
     assert opts["priority_steps"] == list(range(10))
+    assert opts["sep"] == ":"
+    assert opts["queue_order_strategy"] == "priority"

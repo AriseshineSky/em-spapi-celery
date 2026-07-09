@@ -108,10 +108,10 @@ for chunk in chunks:
 |----|-----|
 | 每 task ASIN 数 | **20**（SP-API batch 上限） |
 | 目标队列 | `SpapiItemOffersUpdate_{MARKETPLACE}`，如 `SpapiItemOffersUpdate_US` |
-| 默认 priority | **0**（bulk，Redis key 无后缀） |
+| 默认 priority | **9**（bulk，Redis key `:9`） |
 | task 参数 | `(marketplace, asins, condition)`，`condition` 默认 `new` |
 
-高优先级入队见 [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md) 中的 `dispatch_task(..., priority=9)`。
+高优先级入队见 [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md) 中的 `dispatch_task(..., priority=0)` 或 `PRIORITY_CRITICAL`。
 
 ---
 
@@ -121,9 +121,9 @@ Celery + Redis 将每条消息序列化为 JSON，LPUSH 到 list：
 
 | priority | Redis list key |
 |----------|----------------|
-| 0（bulk，默认） | `SpapiItemOffersUpdate_US` |
-| 9（critical） | `SpapiItemOffersUpdate_US:9` |
+| 0（critical，最高） | `SpapiItemOffersUpdate_US`（无后缀） |
 | 5 | `SpapiItemOffersUpdate_US:5` |
+| 9（bulk，默认） | `SpapiItemOffersUpdate_US:9` |
 
 查看队列：
 
@@ -143,19 +143,18 @@ celery -A em_celery.worker worker -Q SpapiItemOffersUpdate_US ...
 
 **文件：** `em_celery/worker.py`
 
-1. import `kombu_priority_patch`（消费时 `:9` 先于无后缀）
-2. 创建 `app`，加载 `em_celery.config`
-3. `autodiscover_tasks` 注册 `spapi_update_item_offers`
+1. 创建 `app`，加载 `em_celery.config`（含 `broker_transport_options`）
+2. `autodiscover_tasks` 注册 `spapi_update_item_offers`
 
 ### 4.2 取消息
 
-Kombu Redis Channel 的 `_brpop_start` / `_get` 被 patch 为按 `9 → 8 → … → 0` 顺序检查子队列（详见 PRIORITY_QUEUE.md）。
+Kombu Redis Channel 按 Celery 官方顺序检查子队列：无后缀（0）→ `:1` → … → `:9`（详见 PRIORITY_QUEUE.md）。
 
 Worker 的 `-Q` 只需写**逻辑队列名**（无后缀），如 `SpapiItemOffersUpdate_CA`。`em_celery/runtime.py` 会把配置里误写的 `SpapiItemOffersUpdate_CA:9` 归一化为 base name。
 
 ### 4.3 Celery 调度
 
-- `rate_limit='8/m'`：每个 **Worker 子进程** 每分钟最多 8 条 offer task（多进程**不共享**计数，见 [SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md)）
+- `rate_limit='6/m'`：每个 **Worker 子进程** 每分钟最多 6 条 offer task（对齐 0.1 req/s；多进程**不共享**计数，见 [SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md)）
 - `acks_late=True`：执行成功后才 ACK
 - `worker_prefetch_multiplier=1`：配合优先级，避免 prefetch 占满低优消息
 
@@ -166,7 +165,7 @@ Worker 的 `-Q` 只需写**逻辑队列名**（无后缀），如 `SpapiItemOffe
 **文件：** `em_celery/tasks/spapi_update_item_offers_task.py`
 
 ```python
-@app.task(base=BaseTask, bind=True, acks_late=True, rate_limit='8/m')
+@app.task(base=BaseTask, bind=True, acks_late=True, rate_limit='6/m')
 def spapi_update_item_offers(self, marketplace, asins, condition='new', ttl=24, force=False, callback=None):
     task = SpapiUpdateItemOffersTask(
         self.spapi,              # BaseTask 懒加载 Spapi 客户端

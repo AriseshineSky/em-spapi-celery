@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """Dispatch work items to the Celery broker with normalized priority."""
 
-import em_celery.scheduling.kombu_priority_patch  # noqa: F401
-
 from em_celery.scheduling.priority import (
     PRIORITY_BULK,
     PRIORITY_CRITICAL,

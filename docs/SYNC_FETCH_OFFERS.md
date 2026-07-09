@@ -147,7 +147,7 @@ def fetch_item_offers_sync_impl(marketplace, condition, asins, batch_size=20):
 | Sender / `apply_async` | ✓ | ✗ |
 | Celery Worker 消费 | ✓ | ✗ |
 | `@app.task` 包装层 | ✓ | ✗ |
-| `rate_limit='8/m'` | ✓ | ✗ |
+| `rate_limit='6/m'` | ✓ | ✗ |
 | `Reject` / `Ignore` / 重入队 | ✓ | ✗ |
 | Forbidden 时 Telegram + shutdown worker | ✓ | ✗ |
 | `worker_meta` / task stats 写 ES | ✓ | ✗（未传 worker） |
@@ -176,7 +176,7 @@ def fetch_item_offers_sync_impl(marketplace, condition, asins, batch_size=20):
 | 验证 ES `[offer_service]` 写入是否正常 | **同步脚本** |
 | 紧急补几个 ASIN 的 offer，不想等队列 | **同步脚本** |
 | 批量、持续、多 marketplace 刷新 | Celery Sender + Worker |
-| 需要优先级队列（`:9` bulk 分离） | Celery |
+| 需要优先级队列（critical 无后缀 / bulk `:9` 分离） | Celery |
 | 需要 rate limit、失败重入队 | Celery |
 
 本地测试分层中的 **L4**（见 [LOCAL_TESTING.md](../local_dev/LOCAL_TESTING.md)）即为此脚本。

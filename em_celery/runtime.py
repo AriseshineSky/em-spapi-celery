@@ -77,7 +77,8 @@ def get_worker_settings(worker_type: str) -> dict[str, str]:
   queues = _normalize_worker_queues(
     _env_queues(worker_type) or default_queues[worker_type]
   )
-  concurrency = _env_concurrency(worker_type) or '2'
+  default_concurrency = {'catalog': '2', 'offer': '1'}
+  concurrency = _env_concurrency(worker_type) or default_concurrency[worker_type]
   loglevel = (
     os.getenv('CELERY_LOGLEVEL')
     or os.getenv('EM_SPAPI_CELERY_LOG_LEVEL')

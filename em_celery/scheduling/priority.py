@@ -1,23 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Task priority for Redis broker (Celery/Kombu emulation).
+"""Task priority for Redis broker (Celery/Kombu native semantics).
 
-User-facing API: 0–9 where **9 = highest** (critical), **0 = lowest** (bulk).
+Celery Redis priority (see routing docs):
 
-Broker priority uses the **same numbers** as user priority:
+- **0 = highest** → Redis list ``SpapiItemOffersUpdate_US`` (no suffix)
+- **9 = lowest (bulk)** → ``SpapiItemOffersUpdate_US:9``
 
-- ``priority=9`` → Redis list ``SpapiItemOffersUpdate_US:9`` (highest)
-- ``priority=5`` → ``...:5`` (normal)
-- ``priority=0`` → ``SpapiItemOffersUpdate_US`` without suffix (lowest)
-
-Workers consume sub-queues highest-suffix-first via ``kombu_priority_patch``
-(``priority_steps`` stays ascending so LPUSH targets ``:9`` correctly).
+Workers consume sub-queues in ``priority_steps`` order (0 first, 9 last) with no patch.
 """
 
-PRIORITY_BULK = 0
-PRIORITY_LOW = 3
+PRIORITY_CRITICAL = 0
+PRIORITY_HIGH = 2
 PRIORITY_NORMAL = 5
-PRIORITY_HIGH = 7
-PRIORITY_CRITICAL = 9
+PRIORITY_LOW = 7
+PRIORITY_BULK = 9
 
 PRIORITY_MIN = 0
 PRIORITY_MAX = 9
@@ -33,11 +29,12 @@ PRIORITY_NAMES = {
 # Must match ``broker_transport_options['sep']`` in worker settings.
 REDIS_PRIORITY_SEP = ":"
 REDIS_PRIORITY_STEPS = list(range(10))
-REDIS_BROKER_CONSUME_ORDER = list(range(9, -1, -1))
+# Kombu BRPOP / RPOP order: base queue (0) first, then :1 … :9.
+REDIS_BROKER_CONSUME_ORDER = list(range(10))
 
 
 def normalize_user_priority(priority):
-    """Clamp user priority to 0–9 (9 = highest)."""
+    """Clamp user priority to 0–9 (0 = highest, 9 = lowest)."""
     if priority is None:
         return PRIORITY_NORMAL
     try:
@@ -48,7 +45,7 @@ def normalize_user_priority(priority):
 
 
 def user_to_broker_priority(priority):
-    """Map user priority to Redis broker priority (same number, 9 = :9)."""
+    """Map user priority to Celery Redis broker priority (same number)."""
     return normalize_user_priority(priority)
 
 
@@ -77,7 +74,7 @@ def iter_redis_priority_queue_keys(
     sep=REDIS_PRIORITY_SEP,
     priority_steps=None,
 ):
-    """Yield Redis list keys for all priority sub-queues (highest suffix first)."""
+    """Yield Redis list keys for all priority sub-queues (highest first: base, :1, …, :9)."""
     queue_name = base_queue_name(queue_name, sep=sep)
     steps = (
         REDIS_BROKER_CONSUME_ORDER

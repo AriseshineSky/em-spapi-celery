@@ -9,7 +9,6 @@ import pytest
 import redis
 from kombu import Connection
 
-import em_celery.scheduling.kombu_priority_patch  # noqa: F401
 from em_celery.scheduling.kombu_priority_patch import broker_transport_options
 from em_celery.scheduling.priority import iter_redis_priority_queue_keys
 from em_celery.scheduling.send import dispatch_task
@@ -44,43 +43,43 @@ def test_enqueue_maps_priority_to_redis_suffix(local_broker):
         args=("zz", ["BULK001"], "new"),
         queue=TEST_QUEUE,
         connection=conn,
-        priority=0,
+        priority=9,
     )
     dispatch_task(
         spapi_update_item_offers,
         args=("zz", ["HIGH001"], "new"),
         queue=TEST_QUEUE,
         connection=conn,
-        priority=9,
+        priority=0,
     )
 
-    assert local_broker.llen(TEST_QUEUE) == 1
     assert local_broker.llen(f"{TEST_QUEUE}:9") == 1
+    assert local_broker.llen(TEST_QUEUE) == 1
 
 
 def test_worker_pops_high_priority_before_bulk(local_broker):
     conn = Connection(TEST_BROKER, transport_options=broker_transport_options())
 
-    # Bulk first, high second — consumption must still prefer :9.
+    # Bulk first, critical second — consumption must still prefer base queue (priority 0).
     dispatch_task(
         spapi_update_item_offers,
         args=("zz", ["BULK001"], "new"),
         queue=TEST_QUEUE,
         connection=conn,
-        priority=0,
+        priority=9,
     )
     dispatch_task(
         spapi_update_item_offers,
         args=("zz", ["HIGH001"], "new"),
         queue=TEST_QUEUE,
         connection=conn,
-        priority=9,
+        priority=0,
     )
 
     with conn.channel() as channel:
         channel._get(TEST_QUEUE)
-        assert local_broker.llen(f"{TEST_QUEUE}:9") == 0
-        assert local_broker.llen(TEST_QUEUE) == 1
+        assert local_broker.llen(TEST_QUEUE) == 0
+        assert local_broker.llen(f"{TEST_QUEUE}:9") == 1
 
         channel._get(TEST_QUEUE)
-        assert local_broker.llen(TEST_QUEUE) == 0
+        assert local_broker.llen(f"{TEST_QUEUE}:9") == 0

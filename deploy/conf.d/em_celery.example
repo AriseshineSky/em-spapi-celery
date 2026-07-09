@@ -11,8 +11,9 @@ CELERY_CATALOG_QUEUES=SpapiCatalogItemsUpdate_US,SpapiCatalogItemsUpdate_UK
 CELERY_CATALOG_CONCURRENCY=2
 
 # Offer worker (em-spapi-celery-offer-worker)
+# burst=1 → concurrency=1; rate_limit=6/m aligns with 0.1 req/s per process
 CELERY_OFFER_QUEUES=SpapiItemOffersUpdate_US,SpapiItemOffersUpdate_UK
-CELERY_OFFER_CONCURRENCY=4
+CELERY_OFFER_CONCURRENCY=1
 
 # Optional legacy single-worker names: CELERY_QUEUES / CELERY_CONCURRENCY
 

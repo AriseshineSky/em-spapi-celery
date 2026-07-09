@@ -4,7 +4,7 @@
 Inspect or purge Celery Redis queue lengths for SP-API catalog/offer tasks.
 
 Celery (Redis backend) stores pending messages in lists named after the queue.
-Priority tasks use suffix sub-keys ``:1``–``:9``; bulk (priority 0) uses the base name.
+Priority tasks use suffix sub-keys ``:1``–``:9``; priority 0 (highest) uses the base name.
 """
 
 from __future__ import annotations

@@ -16,8 +16,8 @@ flowchart LR
   end
 
   subgraph Broker["Redis Broker"]
-    Q0["SpapiItemOffersUpdate_CA\n(bulk, priority 0)"]
-    Q9["SpapiItemOffersUpdate_CA:9\n(critical)"]
+    Q0["SpapiItemOffersUpdate_CA\n(critical, priority 0)"]
+    Q9["SpapiItemOffersUpdate_CA:9\n(bulk)"]
   end
 
   subgraph 消费端["消费端（Worker）"]
@@ -46,15 +46,13 @@ flowchart LR
 **文件：** `em_celery/worker.py`
 
 ```python
-import em_celery.scheduling.kombu_priority_patch  # 优先级队列 patch，必须最先加载
-
 app = Celery('em_celery')
 app.config_from_object('em_celery.config')
 app.autodiscover_tasks(['em_celery'], force=True)
 ```
 
 - `app`：全局 Celery 实例
-- `config_from_object('em_celery.config')`：broker、ACK、优先级等
+- `config_from_object('em_celery.config')`：broker、ACK、优先级等（含 Celery 官方 Redis priority transport）
 - `autodiscover_tasks`：扫描 `em_celery.tasks` 包，加载 `@app.task` 装饰的函数
 
 **手动启动：**
@@ -154,7 +152,7 @@ Celery 专用配置：`em_celery/config.py`
 
 ④ Celery Task 包装层（异常、限流、告警）
    em_celery/tasks/spapi_update_item_offers_task.py
-   └── @app.task(rate_limit='8/m') def spapi_update_item_offers(...)
+   └── @app.task(rate_limit='6/m') def spapi_update_item_offers(...)
 
 ⑤ 业务逻辑层
    em_tasks/tasks/spapi_update_item_offers_task.py
@@ -202,7 +200,7 @@ em-spapi-celery/
 │   ├── runtime.py              # 生产 worker 队列/并发解析
 │   ├── tasks/                  # @app.task 薄包装
 │   ├── tools/                  # ★ Sender CLI 入口
-│   └── scheduling/             # 优先级队列（priority + kombu patch）
+│   └── scheduling/             # 优先级队列（Celery 官方 Redis priority）
 ├── em_tasks/                   # 业务层
 │   ├── tasks/                  # ★ SpapiUpdate*Task 实现
 │   └── spapi/                  # SP-API 封装

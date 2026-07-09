@@ -2,10 +2,7 @@
 
 import os
 
-from em_celery.scheduling.kombu_priority_patch import (  # noqa: F401
-    apply_kombu_priority_patch,
-    broker_transport_options,
-)
+from em_celery.scheduling.kombu_priority_patch import broker_transport_options
 from em_celery.scheduling.priority import (
     PRIORITY_BULK,
     user_to_broker_priority,

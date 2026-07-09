@@ -23,7 +23,7 @@ from em_celery.worker import app
 logger = get_task_logger(__name__)
 
 
-@app.task(base=BaseTask, bind=True, acks_late=True, rate_limit='8/m')
+@app.task(base=BaseTask, bind=True, acks_late=True, rate_limit='6/m')
 def spapi_update_item_offers(self, marketplace, asins, condition='new', ttl=24, force=False, callback=None):
   task = SpapiUpdateItemOffersTask(
     self.spapi,

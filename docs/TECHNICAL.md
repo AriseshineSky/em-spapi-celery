@@ -11,7 +11,7 @@
 | [SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md) | SP-API 限流、Celery 多进程与速率协调 |
 | [OFFER_PIPELINE.md](./OFFER_PIPELINE.md) | Offer 从入队到写 ES 的逐步代码走读 |
 | [SYNC_FETCH_OFFERS.md](./SYNC_FETCH_OFFERS.md) | 同步脚本 `spapi_fetch_item_offers_sync`（不经 Celery） |
-| [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md) | Redis 优先级子队列（`:9` → bulk）机制 |
+| [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md) | Redis 优先级子队列（无后缀 critical → `:9` bulk）机制 |
 
 ---
 
@@ -23,7 +23,7 @@
 - 将结果写入 **Elasticsearch**
 - 使用 **Celery + Redis** 异步调度，支持多 marketplace、TTL 去重、限流、**Redis 优先级子队列**（与 em-workers 对齐）
 
-典型使用场景：批量 ASIN 需要定期刷新 catalog 属性或 competitive offer，由 Sender 投递任务、Worker 消费并回写 ES。高优 offer 刷新（如 em-workers `priority=9`）通过 `SpapiItemOffersUpdate_{MP}:9` 子队列优先被消费。
+典型使用场景：批量 ASIN 需要定期刷新 catalog 属性或 competitive offer，由 Sender 投递任务、Worker 消费并回写 ES。高优 offer 刷新通过 `priority=0` 进入 `SpapiItemOffersUpdate_{MP}`（无后缀）子队列，优先于 bulk（`:9`）被消费。
 
 ### 技术栈
 
@@ -56,13 +56,13 @@ flowchart TB
 
     subgraph Broker["Redis Broker"]
         Q_CAT[SpapiCatalogItemsUpdate_US]
-        Q_OFF[SpapiItemOffersUpdate_US]
-        Q_OFF9[SpapiItemOffersUpdate_US:9]
+        Q_OFF0[SpapiItemOffersUpdate_US<br/>critical]
+        Q_OFF9[SpapiItemOffersUpdate_US:9<br/>bulk]
     end
 
     subgraph Worker["Celery Worker"]
         T_CAT[spapi_update_catalog_items<br/>rate: 1/s]
-        T_OFF[spapi_update_item_offers<br/>rate: 8/m]
+        T_OFF[spapi_update_item_offers<br/>rate: 6/m]
     end
 
     subgraph Core["em_tasks 核心逻辑"]
@@ -80,11 +80,11 @@ flowchart TB
     F --> S_FILE
     ES_IN --> S_ES
     ES_IN --> S_ALL
-    S_FILE --> Q_CAT & Q_OFF
-    S_ES --> Q_CAT & Q_OFF
-    S_ALL --> Q_CAT & Q_OFF
+    S_FILE --> Q_CAT & Q_OFF9
+    S_ES --> Q_CAT & Q_OFF9
+    S_ALL --> Q_CAT & Q_OFF9
     Q_CAT --> T_CAT
-    Q_OFF & Q_OFF9 --> T_OFF
+    Q_OFF0 & Q_OFF9 --> T_OFF
     T_CAT --> SPAPI --> PARSER --> PS --> ES_CAT
     T_OFF --> SPAPI --> OS --> ES_OFF
     S_SYNC --> SPAPI --> OS --> ES_OFF
@@ -178,7 +178,7 @@ sequenceDiagram
     Src->>Sender: 文件 / ES 扫描 ASIN
     Sender->>ES: 查询 lowest_offer_listings_{mp}_{cond}（TTL）
     Sender->>Redis: apply_async → SpapiItemOffersUpdate_{MP}[/:{priority}]
-    Redis->>Worker: BRPOP（:9 … :1 → 无后缀）
+    Redis->>Worker: BRPOP（无后缀 → :1 … :9）
     Worker->>Task: run()
     loop 内部重试
         Task->>API: get_item_offers_batch
@@ -235,7 +235,7 @@ from em_celery.tasks.spapi_update_item_offers_task import spapi_update_item_offe
 | 任务名 | 队列 | 限流 | 参数 | 底层类 |
 |--------|------|------|------|--------|
 | `em_celery.tasks.spapi_update_catalog_items_task.spapi_update_catalog_items` | `SpapiCatalogItemsUpdate_{MARKETPLACE}` | `1/s` | `marketplace, asins[, ttl, force, callback]` | `SpapiUpdateCatalogItemsTask` |
-| `em_celery.tasks.spapi_update_item_offers_task.spapi_update_item_offers` | `SpapiItemOffersUpdate_{MARKETPLACE}` | `8/m` | `marketplace, asins[, condition, ttl, force, callback]` | `SpapiUpdateItemOffersTask` |
+| `em_celery.tasks.spapi_update_item_offers_task.spapi_update_item_offers` | `SpapiItemOffersUpdate_{MARKETPLACE}` | `6/m` | `marketplace, asins[, condition, ttl, force, callback]` | `SpapiUpdateItemOffersTask` |
 
 > **说明**：Celery 任务签名中的 `ttl` / `force` / `callback` 在 Worker 侧**未使用**；TTL 过滤仅在 Sender 端完成。
 
@@ -247,13 +247,13 @@ from em_celery.tasks.spapi_update_item_offers_task import spapi_update_item_offe
 | `task_reject_on_worker_lost` | `True` | Worker 丢失时重新入队 |
 | `task_ignore_result` | `True` | 不存储任务结果 |
 | `task_create_missing_queues` | `True` | 自动创建队列 |
-| `task_default_priority` | `0` | 未指定 priority 时进 bulk 队列（无后缀） |
-| `task_queue_max_priority` | `9` | 最高优先级 |
-| `broker_transport_options` | `priority_steps` + `sep: ":"` | Redis 优先级子队列 |
+| `task_default_priority` | `9` | 未指定 priority 时进 bulk 队列（`:9`） |
+| `task_queue_max_priority` | `9` | 优先级上限（0 最高） |
+| `broker_transport_options` | `priority_steps` + `sep: ":"` | Redis 优先级子队列（Celery 官方语义） |
 | `worker_prefetch_multiplier` | `1` | 配合优先级公平消费 |
 | `broker_url` | `BROKER_URL` 环境变量 | Redis 地址 |
 
-Worker 启动时 import `em_celery.scheduling.kombu_priority_patch`，消费顺序为 `:9` → … → 无后缀。详见 [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md)。
+Worker 通过 `broker_transport_options` 消费顺序为无后缀（0）→ `:1` → … → `:9`。详见 [PRIORITY_QUEUE.md](./PRIORITY_QUEUE.md)。
 
 ### 4.3 Worker 启动
 
@@ -547,7 +547,7 @@ em-spapi-celery/
 │   ├── config.py               # Celery 配置（含 priority）
 │   ├── runtime.py              # 生产 worker 队列/并发解析
 │   ├── __init__.py             # get_config / get_*_service
-│   ├── scheduling/             # 优先级队列 priority + kombu patch
+│   ├── scheduling/             # 优先级队列（Celery 官方 Redis priority）
 │   ├── tasks/
 │   │   ├── __init__.py         # 显式导出已注册 task
 │   │   ├── base.py             # BaseTask
