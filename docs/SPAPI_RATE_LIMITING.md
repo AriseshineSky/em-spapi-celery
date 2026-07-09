@@ -135,10 +135,8 @@ flowchart LR
 |-----|-------------|------------------------------|----------|
 | Offer batch | **6/min**（0.1/s） | rate_limit **6/m** → **6/min 启动** | **是** |
 | Offer burst | **1** 并发 token | concurrency=**1** → in-flight ≤ 1 | **是** |
-| Catalog | **2/s**（120/min） | rate_limit **1/s** → **1/s 启动**（偏保守） | 可持续略低于上限 |
+| Catalog | **2/s**（120/min） | rate_limit **2/s** → **2/s 启动** | **是** |
 | Catalog burst | **2** | concurrency=**2** → in-flight ≤ 2 | **是**（单机） |
-
-> Catalog 若要在单 Worker 上打满 2/s 持续速率，可将 `rate_limit` 改为 `2/s`；当前 `1/s` + `concurrency=2` 更偏安全（ sustained 1/s，burst 形态仍可达 2 路 in-flight）。
 
 ---
 
@@ -152,7 +150,7 @@ flowchart TB
   end
 
   subgraph Celery["Celery Worker（prefork）"]
-    RL["Layer 0: rate_limit<br/>offer 6/m · catalog 1/s<br/>每 Worker 实例一个 TokenBucket"]
+    RL["Layer 0: rate_limit<br/>offer 6/m · catalog 2/s<br/>每 Worker 实例一个 TokenBucket"]
     PF["prefetch_multiplier=1<br/>每子进程最多预取 1 条"]
   end
 
@@ -197,13 +195,13 @@ flowchart TB
 @app.task(..., rate_limit='6/m')
 
 # em_celery/tasks/spapi_update_catalog_items_task.py
-@app.task(..., rate_limit='1/s')
+@app.task(..., rate_limit='2/s')
 ```
 
 含义（[Celery 官方](https://docs.celeryq.dev/en/stable/userguide/tasks.html#Task.rate_limit)）：
 
 - **`6/m`**：该 **Worker 实例** 每分钟最多 **开始执行** 6 次此 task（≈ 每 10s 启动 1 次）
-- **`1/s`**：该 Worker 实例每秒最多 **开始执行** 1 次此 task
+- **`2/s`**：该 Worker 实例每秒最多 **开始执行** 2 次此 task（对齐 account-application 2 req/s）
 - 限速的是 **task 启动**，不是 Sender 入队速度
 
 ### 3.2 Token Bucket 内部实现（Celery 5.x 源码）
@@ -304,7 +302,7 @@ Catalog：单机可 ≤ 2（Amazon burst=2）；多机叠加需减小
 
 | 官方建议 | 本项目做法 |
 |----------|------------|
-| I/O 型 task 配合 `rate_limit` | offer `6/m`、catalog `1/s` |
+| I/O 型 task 配合 `rate_limit` | offer `6/m`、catalog `2/s` |
 | 限速为 **per worker instance** | 见 §3.4，多机需反算 |
 | 避免 prefetch 过多 | `worker_prefetch_multiplier = 1` |
 | 全局限速需额外机制 | **未实现**；靠减 Worker 副本 + 429 重试 |
@@ -438,8 +436,7 @@ def is_queue_full(self):
 |------|---------------------------|------------------|--------------|
 | 1 台 offer worker（6/m） | 6 batch/min | — | offer **6/min** ✓ |
 | 2 台 offer worker（各 6/m） | 12 batch/min | — | offer **6/min** ✗ |
-| 1 台 catalog worker（1/s） | — | 60/min（1/s） | catalog **120/min**（偏保守） |
-| 1 台 catalog worker（2/s） | — | 120/min | catalog **120/min** ✓ |
+| 1 台 catalog worker（2/s） | — | 120/min（2/s） | catalog **120/min** ✓ |
 
 实际会更低：429 重试、ES 写入、空 ASIN、Reject requeue 都会拉低有效 QPS。**in-flight HTTP** 还受 `concurrency` 与 task 耗时影响，见 §3.3。对齐方法见 §8.2–§8.4。
 
@@ -503,7 +500,7 @@ flowchart LR
 
 rate_limit 解析：
   '6/m' → 6/60 = 0.1 次启动/s
-  '1/s' → 1 次启动/s
+  '2/s' → 2 次启动/s
 ```
 
 **Offer（`getItemOffersBatch`）— 默认 R=0.1 req/s，B=1：**
@@ -536,10 +533,10 @@ N_workers × rate_limit_per_sec  ≤  2   （持续启动速率）
 
 | 集群 catalog Worker 数 | 每实例 rate_limit（持续打满 2/s） | concurrency（burst） |
 |------------------------|-----------------------------------|----------------------|
-| 1 | **2/s**（或保守 **1/s**） | **2** |
-| 2 | **1/s** | **1** 或 各 **1** |
+| 1 | **2/s** | **2** |
+| 2 | **1/s** | **1** |
 
-当前配置 `1/s` + `concurrency=2`：** sustained 1/s（保守）**，burst 形态可达 2 路 in-flight。
+当前配置 `2/s` + `concurrency=2`：与官方 **2 req/s、burst 2** 对齐（单机 1 Worker 实例）。
 
 ### 8.3 配置演算示例
 
@@ -601,7 +598,7 @@ flowchart TD
 | Worker 类型 | concurrency | rate_limit（每 Worker 实例） | 说明 |
 |-------------|-------------|------------------------------|------|
 | Offer | **1**（全集群合计 1 更稳） | **5–6/m** | rate 对齐 0.1/s；concurrency 对齐 burst=1 |
-| Catalog | **2**（单机） | **1/s**（保守）或 **2/s**（打满） | concurrency 对齐 burst=2 |
+| Catalog | **2**（单机） | **2/s** | rate + burst 均对齐 2/s、2 |
 | 本地开发 | **1**（已固定） | 同生产或更保守 | `run_local_worker.sh` |
 
 **何时可以加大 concurrency？**
@@ -622,7 +619,7 @@ flowchart TD
 |----------|------------|----------|
 | 429 指数退避 + jitter | 固定 `sleep(max_retries)`、`sleep(3)` | 可改为读 `Retry-After` / 指数退避（需改代码） |
 | 读 `x-amzn-RateLimit-Limit` | **未解析** | 日志/指标记录该头，用于验证实际 R |
-| 不 hardcode 定时器 | Celery `rate_limit` 固定 6/m、1/s | 按 §8.2 公式反算；或读响应头动态调速 |
+| 不 hardcode 定时器 | Celery `rate_limit` 固定 6/m、2/s | 按 §8.2 公式反算；或读响应头动态调速 |
 | 均匀分布请求 | Celery TokenBucket 匀速放 token；Reject requeue 仍可能突发 | concurrency=1、Sender `-q` |
 | 用 batch API 减调用次数 | 已 batch 20 ASIN | ✓ 已符合 |
 | 全集群单桶协调 | Celery 桶 ≠ Amazon 桶；无跨 Worker Redis limiter | 减副本，或实现分布式 token bucket |
@@ -640,7 +637,7 @@ flowchart TD
 | 项 | 本地 `run_local_worker.sh` | 生产推荐 | 对齐官方默认 |
 |----|---------------------------|----------|--------------|
 | concurrency | 1 | offer **1** / catalog **2** | burst 对齐 |
-| rate_limit | 6/m、1/s | 同上 | offer **6/m**（1 实例）；catalog **1/s** 保守 |
+| rate_limit | 6/m、2/s | 同上 | offer **6/m**；catalog **2/s**（1 实例） |
 | 有效 offer 启动 | 6 batch/min | 6 × N_workers batch/min | 目标 **≤6/min**（默认 R=0.1） |
 
 ---
@@ -672,8 +669,8 @@ A：**算法上都是 Token Bucket**，但不是同一个桶。Celery 在 Worker
 **Q：为什么 concurrency=4 容易 429，即使 rate_limit=6/m？**  
 A：`rate_limit` 是 **每 Worker 实例** 6/min 启动，**不乘** concurrency。429 主因是 **concurrency>1** 导致多路 HTTP **同时 in-flight**，超过 Offer **burst=1**；与平均速率无关。
 
-**Q：Catalog concurrency=2、rate_limit=1/s 算对齐吗？**  
-A：**burst** 对齐（in-flight ≤ 2）。**持续速率** 仅 1/s 启动，低于官方 2/s——偏保守。单机要打满 2/s 可改 `rate_limit='2/s'`。第二台 catalog Worker 会把启动速率 **相加**，需降为各 `1/s` 或 `0.5/s`。
+**Q：Catalog concurrency=2、rate_limit=2/s 算对齐吗？**  
+A：**单机 1 Worker 实例**时，2/s 启动 + concurrency=2 in-flight，与 account-application 默认 **2 req/s、burst 2** 一致。第二台 catalog Worker 会把启动速率 **相加**（合计 4/s），需降为各 **1/s** 或 **concurrency=1**。
 
 **Q：Worker 怎么知道发送速度？Sender 要传吗？**  
 A：**不传**。Worker 读 task 装饰器 `rate_limit`；Sender 只负责 `apply_async` 入队。限速发生在 Consumer 从队列取出消息之后、dispatch 到子进程之前。

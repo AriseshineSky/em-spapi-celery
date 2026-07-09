@@ -61,7 +61,7 @@ flowchart TB
     end
 
     subgraph Worker["Celery Worker"]
-        T_CAT[spapi_update_catalog_items<br/>rate: 1/s]
+        T_CAT[spapi_update_catalog_items<br/>rate: 2/s]
         T_OFF[spapi_update_item_offers<br/>rate: 6/m]
     end
 
@@ -234,7 +234,7 @@ from em_celery.tasks.spapi_update_item_offers_task import spapi_update_item_offe
 
 | 任务名 | 队列 | 限流 | 参数 | 底层类 |
 |--------|------|------|------|--------|
-| `em_celery.tasks.spapi_update_catalog_items_task.spapi_update_catalog_items` | `SpapiCatalogItemsUpdate_{MARKETPLACE}` | `1/s` | `marketplace, asins[, ttl, force, callback]` | `SpapiUpdateCatalogItemsTask` |
+| `em_celery.tasks.spapi_update_catalog_items_task.spapi_update_catalog_items` | `SpapiCatalogItemsUpdate_{MARKETPLACE}` | `2/s` | `marketplace, asins[, ttl, force, callback]` | `SpapiUpdateCatalogItemsTask` |
 | `em_celery.tasks.spapi_update_item_offers_task.spapi_update_item_offers` | `SpapiItemOffersUpdate_{MARKETPLACE}` | `6/m` | `marketplace, asins[, condition, ttl, force, callback]` | `SpapiUpdateItemOffersTask` |
 
 > **说明**：Celery 任务签名中的 `ttl` / `force` / `callback` 在 Worker 侧**未使用**；TTL 过滤仅在 Sender 端完成。
