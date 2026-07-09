@@ -103,8 +103,6 @@ def get_spapi():
     'refresh_token': spapi_cfg['lwa_refresh_token'],
     'lwa_app_id': spapi_cfg['lwa_client_id'],
     'lwa_client_secret': spapi_cfg['lwa_client_secret'],
-    'aws_access_key': spapi_cfg['aws_access_key'],
-    'aws_secret_key': spapi_cfg['aws_secret_key']
   }
 
   return Spapi(credentials)

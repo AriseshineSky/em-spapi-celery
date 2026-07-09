@@ -465,7 +465,7 @@ Offer 任务在累计 250 次 `Reject` 后会发 Telegram 重置通知。
 
 | 段 | 键 | 用途 |
 |----|-----|------|
-| `[spapi]` | `lwa_refresh_token`, `lwa_client_id`, `lwa_client_secret`, `aws_access_key`, `aws_secret_key` | SP-API 凭证 |
+| `[spapi]` | `lwa_refresh_token`, `lwa_client_id`, `lwa_client_secret` | SP-API LWA OAuth 凭证（见 [SPAPI_CORE.md §2](./SPAPI_CORE.md#22-依据为何不需要-aws_access_key--aws_secret_key)） |
 | `[product_service]` | `host`, `port`, `user`, `password` | Catalog ES（**7.17.10**） |
 | `[offer_service]` | `host`, `port`, `user`, `password` | Offer ES（**7.17.10**） |
 ### 9.3 环境变量

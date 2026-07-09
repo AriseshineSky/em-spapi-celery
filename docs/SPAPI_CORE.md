@@ -63,35 +63,97 @@ flowchart TB
 
 ## 2. 认证与客户端创建
 
-### 2.1 配置段 `[spapi]`
+### 2.1 授权方式：LWA OAuth 2.0（Login with Amazon）
+
+依赖库 **`python-amazon-sp-api` 1.4.3**（`sp_api` 包）使用 **LWA 刷新令牌** 换取 access token，在请求头携带 `x-amz-access-token` 调用 SP-API。
+
+**不再需要** 早期 SP-API 的 IAM `aws_access_key` / `aws_secret_key`（AWS SigV4 签名）；库内 `required_credentials` 仅要求：
+
+| 字段 | config.ini 键 | 作用 |
+|------|---------------|------|
+| `refresh_token` | `lwa_refresh_token` | Seller 授权后的长期刷新令牌 |
+| `lwa_app_id` | `lwa_client_id` | Developer App 的 LWA Client ID |
+| `lwa_client_secret` | `lwa_client_secret` | Developer App 的 LWA Client Secret |
+
+流程（`sp_api.auth.AccessTokenClient`）：
+
+1. `POST https://api.amazon.com/auth/o2/token`，`grant_type=refresh_token`
+2. 返回 `access_token`（约 1 小时有效，库内 TTL 缓存）
+3. 每次 SP-API 请求 Header：`x-amz-access-token: <access_token>`
+
+Grantless 操作（本项目未用）可用 `client_credentials` + scope，仍只需 LWA app id/secret。
+
+### 2.2 依据：为何不需要 `aws_access_key` / `aws_secret_key`
+
+SP-API 早期版本要求开发者用 **IAM 用户密钥（AWS SigV4）** 对请求签名，并同时配置 LWA。当前 **Selling Partner API 已改为以 LWA access token 为唯一调用凭证**；本项目锁定的 SDK 版本亦不再读取或校验 AWS 密钥。
+
+#### 1）依赖库 `python-amazon-sp-api==1.4.3`（`uv.lock`）
+
+库内 `CredentialProvider` 的 **必填项** 仅 LWA 三项（`sp_api/base/credential_provider.py`）：
+
+```python
+required_credentials = [
+    'lwa_app_id',
+    'lwa_client_secret',
+]
+# 实际调用 seller API 时还需 refresh_token（由 FromCodeCredentialProvider 传入）
+```
+
+`CredentialProvider.Config` 只定义 `refresh_token`、`lwa_app_id`、`lwa_client_secret`，**无** `aws_access_key` / `aws_secret_key` 字段。
+
+#### 2）HTTP 鉴权头为 LWA token，非 SigV4
+
+`sp_api/base/client.py` 构造请求头：
+
+```python
+'x-amz-access-token': self.restricted_data_token or self.auth.access_token,
+```
+
+Access token 由 `AccessTokenClient` 向 `https://api.amazon.com/auth/o2/token` 用 `grant_type=refresh_token` 换取（`sp_api/auth/access_token_client.py`），**不涉及** AWS Access Key 签名。
+
+#### 3）Amazon 官方文档
+
+| 主题 | 链接 |
+|------|------|
+| 配置 LWA 凭证 | [Configure LWA credentials](https://developer-docs.amazon.com/sp-api/docs/connecting-to-the-selling-partner-api) |
+| 授权工作流（refresh token） | [Authorizing Selling Partner API applications](https://developer-docs.amazon.com/sp-api/docs/authorizing-selling-partner-api-applications) |
+| Grantless 操作（仅需 client_id/secret） | [Grantless operations](https://developer-docs.amazon.com/sp-api/docs/grantless-operations) |
+
+官方 Connecting 文档说明：调用 SP-API 需在请求中包含 **LWA access token**；IAM 角色/用户主要用于访问卖家 S3 等 **AWS 资源**（如 Reports 文档下载），**不是** Catalog/Offer REST 调用的常规前置条件。
+
+#### 4）本项目变更摘要
+
+| 项 | 变更 |
+|----|------|
+| `~/.em_celery/config.ini` `[spapi]` | 删除 `aws_access_key`、`aws_secret_key` |
+| `get_spapi()` | 仅传 LWA 三字段 |
+| `BaseTask.spapi` | 复用 `get_spapi()`，避免重复组装 |
+
+若旧 config 仍保留 AWS 键，可安全删除；SDK 不会读取。
+
+### 2.3 配置段 `[spapi]`
 
 ```ini
 [spapi]
 lwa_refresh_token = ...
 lwa_client_id = ...
 lwa_client_secret = ...
-aws_access_key = ...
-aws_secret_key = ...
 ```
 
-### 2.2 组装 credentials
+### 2.4 组装 credentials
 
-Worker 路径（`em_celery/tasks/base.py`）：
+`get_spapi()`（`em_celery/__init__.py`），Worker 经 `BaseTask.spapi` 复用同一函数：
 
 ```python
 credentials = {
     'refresh_token': spapi_cfg['lwa_refresh_token'],
     'lwa_app_id': spapi_cfg['lwa_client_id'],
     'lwa_client_secret': spapi_cfg['lwa_client_secret'],
-    'aws_access_key': spapi_cfg['aws_access_key'],
-    'aws_secret_key': spapi_cfg['aws_secret_key'],
 }
-self._spapi = Spapi(credentials)
+return Spapi(credentials)
 ```
 
-同步脚本路径（`get_spapi()` in `em_celery/__init__.py`）使用相同字段。
-
-### 2.3 API 客户端缓存
+### 2.5 API 客户端缓存
 
 `Spapi` 按 marketplace **懒加载并缓存**两类客户端：
 

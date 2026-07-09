@@ -1,25 +1,16 @@
 import pdb
 
 import em_tasks.spapi
-from em_tasks.spapi import Spapi
 from em_tasks.tasks.spapi_update_item_offers_task import SpapiUpdateItemOffersTask
 from em_tasks.tasks.spapi_update_catalog_items_task import SpapiUpdateCatalogItemsTask
 
-from em_celery import get_config, logger, get_offer_service, get_product_service
+from em_celery import get_config, logger, get_offer_service, get_product_service, get_spapi
 
 asins_path = './emp_asins.txt'
 
 cfg = get_config()
 
-spapi_cfg = cfg['spapi']
-credentials = {
-  'refresh_token': spapi_cfg['lwa_refresh_token'],
-  'lwa_app_id': spapi_cfg['lwa_client_id'],
-  'lwa_client_secret': spapi_cfg['lwa_client_secret'],
-  'aws_access_key': spapi_cfg['aws_access_key'],
-  'aws_secret_key': spapi_cfg['aws_secret_key']
-}
-spapi = Spapi(credentials)
+spapi = get_spapi()
 offer_service = get_offer_service()
 product_service = get_product_service()
 

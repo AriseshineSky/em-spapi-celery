@@ -5,9 +5,7 @@ import os
 from celery import Task
 from celery.utils.log import get_task_logger
 
-from em_tasks.spapi import Spapi
-
-from em_celery import get_config, get_product_service, get_offer_service, get_bot, get_group_chat_id
+from em_celery import get_config, get_product_service, get_offer_service, get_bot, get_group_chat_id, get_spapi
 
 logger = get_task_logger(__name__)
 
@@ -23,15 +21,7 @@ class BaseTask(Task):
   @property
   def spapi(self):
     if self._spapi is None:
-      spapi_cfg = self.cfg['spapi']
-      credentials = {
-        'refresh_token': spapi_cfg['lwa_refresh_token'],
-        'lwa_app_id': spapi_cfg['lwa_client_id'],
-        'lwa_client_secret': spapi_cfg['lwa_client_secret'],
-        'aws_access_key': spapi_cfg['aws_access_key'],
-        'aws_secret_key': spapi_cfg['aws_secret_key']
-      }
-      self._spapi = Spapi(credentials)
+      self._spapi = get_spapi()
 
     return self._spapi
 
