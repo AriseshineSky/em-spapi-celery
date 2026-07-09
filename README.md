@@ -44,7 +44,7 @@ VPS 生产部署见 [deploy/README.md](deploy/README.md)（Admin 用户 + system
 
 主要配置段：
 
-- `[spapi]` — Amazon SP-API 凭证
+- `[spapi]` — Amazon SP-API **LWA OAuth** 凭证（`lwa_refresh_token`、`lwa_client_id`、`lwa_client_secret`；无需 AWS IAM 密钥，见 [SPAPI_CORE.md §2](docs/SPAPI_CORE.md#2-认证与客户端创建)）
 - `[product_service]` — Catalog 产品 ES
 - `[offer_service]` — Offer ES
 
