@@ -17,7 +17,7 @@ gcloud compute ssh mi01eu --zone=us-central1-a
 
 # 在 VPS 上（root/sudo）
 sudo apt-get update
-sudo apt-get install -y git rsync curl python3 python3-venv
+sudo apt-get install -y git curl python3 python3-venv
 
 # 创建 Admin 用户（若不存在）
 sudo useradd -m -s /bin/bash Admin
@@ -25,12 +25,13 @@ sudo useradd -m -s /bin/bash Admin
 # 安装 uv（Admin 用户）
 sudo -u Admin bash -lc 'curl -LsSf https://astral.sh/uv/install.sh | sh'
 
-# 克隆代码
+# 克隆代码（之后用 git pull 升级，不用 rsync）
 sudo -u Admin git clone https://github.com/AriseshineSky/em-spapi-celery.git /home/Admin/em-spapi-celery
 
-# 安装依赖 + systemd 单元
-sudo bash -lc 'cd /home/Admin/em-spapi-celery && ./deploy/install.sh /home/Admin/em-spapi-celery'
+# 安装依赖 + systemd 单元（须在该 git checkout 内执行）
+sudo /home/Admin/em-spapi-celery/deploy/install.sh
 ```
+
 
 ## 2. 填写配置骨架
 

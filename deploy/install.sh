@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Bootstrap em-spapi-celery on Ubuntu VPS (legacy layout: Admin + ~/.em_celery).
-# Usage: sudo ./deploy/install.sh [/path/to/repo]
+# Code is managed by git at /home/Admin/em-spapi-celery — this script does not copy sources.
+#
+# Usage:
+#   sudo -u Admin git clone <url> /home/Admin/em-spapi-celery
+#   sudo /home/Admin/em-spapi-celery/deploy/install.sh
+#   # or, from inside that checkout:
+#   sudo ./deploy/install.sh
 
 set -euo pipefail
 
-REPO_SRC="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
+SCRIPT_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 APP_USER="Admin"
 APP_HOME="/home/${APP_USER}"
 APP_ROOT="${APP_HOME}/em-spapi-celery"
@@ -20,13 +26,25 @@ if ! id "$APP_USER" &>/dev/null; then
   exit 1
 fi
 
-echo "==> Syncing application to ${APP_ROOT}"
-mkdir -p "$APP_ROOT" "$CONFIG_DIR"
-rsync -a --delete \
-  --exclude '.venv' --exclude '.git' --exclude '__pycache__' --exclude '*.egg-info' \
-  "$REPO_SRC/" "$APP_ROOT/"
-chown -R "$APP_USER:$APP_USER" "$APP_ROOT" "$CONFIG_DIR"
+if [[ ! -d "$APP_ROOT/.git" ]]; then
+  echo "Expected a git checkout at ${APP_ROOT}." >&2
+  echo "Clone first, then re-run this script:" >&2
+  echo "  sudo -u ${APP_USER} git clone <repo-url> ${APP_ROOT}" >&2
+  echo "  sudo ${APP_ROOT}/deploy/install.sh" >&2
+  exit 1
+fi
+
+# Allow running from the checkout itself; refuse a different tree (no rsync).
+if [[ "$(realpath "$SCRIPT_REPO")" != "$(realpath "$APP_ROOT")" ]]; then
+  echo "install.sh must be run from ${APP_ROOT} (git-managed), not from ${SCRIPT_REPO}." >&2
+  echo "  sudo ${APP_ROOT}/deploy/install.sh" >&2
+  exit 1
+fi
+
+echo "==> Using git checkout at ${APP_ROOT}"
+chown -R "$APP_USER:$APP_USER" "$APP_ROOT"
 chmod +x "$APP_ROOT/deploy/bin/run-worker.sh"
+mkdir -p "$CONFIG_DIR"
 
 echo "==> Installing Python dependencies (uv) as ${APP_USER}"
 UV_BIN="${APP_HOME}/.local/bin/uv"
@@ -72,6 +90,10 @@ echo "  2. Edit ${CONFIG_DIR}/config.ini (SP-API, ES credentials)"
 echo "  3. systemctl enable --now em-spapi-celery-catalog-worker em-spapi-celery-offer-worker"
 echo "  4. journalctl -u em-spapi-celery-catalog-worker -f"
 echo "     journalctl -u em-spapi-celery-offer-worker -f"
+echo
+echo "Upgrade later:"
+echo "  sudo -u ${APP_USER} bash -lc 'cd ${APP_ROOT} && git pull && export PATH=\$HOME/.local/bin:\$PATH && uv sync --no-dev'"
+echo "  sudo systemctl restart em-spapi-celery-catalog-worker em-spapi-celery-offer-worker"
 echo
 echo "Config/logs/data: ${CONFIG_DIR}/"
 echo "EnvironmentFile:  /etc/conf.d/em_celery"
