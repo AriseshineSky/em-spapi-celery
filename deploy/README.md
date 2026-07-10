@@ -54,7 +54,7 @@ Sender 继续用旧机器上的 em-celery 工具发任务。
 代码用 **git** 管理在 `/home/Admin/em-spapi-celery`；`install.sh` 只装依赖和 systemd，**不再 rsync**。
 
 ```bash
-# 需已存在 Admin 用户，且 Admin 已安装 uv
+# 需已存在 Admin 用户（install.sh 会自动安装 uv）
 sudo -u Admin git clone <repo-url> /home/Admin/em-spapi-celery
 sudo /home/Admin/em-spapi-celery/deploy/install.sh
 

@@ -49,11 +49,21 @@ mkdir -p "$CONFIG_DIR"
 echo "==> Installing Python dependencies (uv) as ${APP_USER}"
 UV_BIN="${APP_HOME}/.local/bin/uv"
 if [[ ! -x "$UV_BIN" ]]; then
-  if ! command -v uv &>/dev/null; then
-    echo "uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-    exit 1
+  if command -v uv &>/dev/null; then
+    UV_BIN="$(command -v uv)"
+  else
+    echo "==> uv not found; installing for ${APP_USER}"
+    if ! command -v curl &>/dev/null; then
+      apt-get update -qq
+      apt-get install -y -qq curl
+    fi
+    sudo -u "$APP_USER" bash -lc 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+    UV_BIN="${APP_HOME}/.local/bin/uv"
+    if [[ ! -x "$UV_BIN" ]]; then
+      echo "uv install failed (expected ${UV_BIN})." >&2
+      exit 1
+    fi
   fi
-  UV_BIN="$(command -v uv)"
 fi
 sudo -u "$APP_USER" bash -lc "export PATH='${APP_HOME}/.local/bin:\$PATH'; cd '$APP_ROOT' && '$UV_BIN' sync --no-dev"
 
