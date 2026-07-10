@@ -75,4 +75,4 @@ def test_broker_transport_options_use_ascending_steps():
     opts = broker_transport_options()
     assert opts["priority_steps"] == list(range(10))
     assert opts["sep"] == ":"
-    assert opts["queue_order_strategy"] == "priority"
+    assert opts["queue_order_strategy"] == "round_robin"

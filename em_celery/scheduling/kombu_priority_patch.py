@@ -11,9 +11,12 @@ def broker_transport_options():
 
     Matches Celery docs: ``priority_steps`` + ``sep: ":"`` + ``queue_order_strategy``.
     Priority 0 maps to the base queue name (highest); 9 maps to ``queue:9`` (lowest).
+
+    ``round_robin`` rotates marketplace queues after each consume so same-priority
+    sites share fairly; within one BRPOP, all priority-0 keys still precede ``:9``.
     """
     return {
         "priority_steps": REDIS_PRIORITY_STEPS,
         "sep": REDIS_PRIORITY_SEP,
-        "queue_order_strategy": "priority",
+        "queue_order_strategy": "round_robin",
     }

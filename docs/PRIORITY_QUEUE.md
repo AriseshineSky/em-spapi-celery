@@ -16,7 +16,7 @@
 | 高优 task 先入先出 | `priority=0` → Redis list `QueueName`（**无后缀，最高**） |
 | 批量/backfill 最低优 | `priority=9` → Redis list `QueueName:9` |
 | Worker 先取 urgent | BRPOP 顺序：无后缀 → `:1` → … → `:9`（Kombu 默认，无需 patch） |
-| 与 Celery 文档一致 | `priority_steps` + `sep: ":"` + `queue_order_strategy: priority` |
+| 与 Celery 文档一致 | `priority_steps` + `sep: ":"` + `queue_order_strategy: round_robin` |
 | 现有 Sender 行为不变 | `task_default_priority = 9`，不传 priority 仍进 bulk（`:9`） |
 
 > **注意：** Redis 下 Celery 的 priority **与 RabbitMQ 相反**——数字越小优先级越高。`0` 最高，`9` 最低。
@@ -65,7 +65,7 @@ task_queue_max_priority = 9
 broker_transport_options = {
     "priority_steps": [0, 1, ..., 9],
     "sep": ":",
-    "queue_order_strategy": "priority",
+    "queue_order_strategy": "round_robin",
 }
 worker_prefetch_multiplier = 1       # 避免 prefetch 饿死高优队列
 ```
