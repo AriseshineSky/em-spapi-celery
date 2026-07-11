@@ -2,7 +2,7 @@
 
 本文从**核心功能**讲起，说明本项目如何调用 Amazon SP-API、请求参数是什么、原始响应如何被转换、最终写入 ES 的数据长什么样。适合在读完 [ENTRY_POINTS.md](./ENTRY_POINTS.md) 后深入理解业务层。
 
-相关文档：[OFFER_PIPELINE.md](./OFFER_PIPELINE.md)、[SYNC_FETCH_OFFERS.md](./SYNC_FETCH_OFFERS.md)
+相关文档：[OFFER_PIPELINE.md](./OFFER_PIPELINE.md)、[SYNC_FETCH_OFFERS.md](./SYNC_FETCH_OFFERS.md)、[SPAPI_AUTH_ISOLATION.md](./SPAPI_AUTH_ISOLATION.md)（多 VPS 授权隔离）
 
 ---
 

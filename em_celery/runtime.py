@@ -89,7 +89,8 @@ def get_worker_settings(worker_type: str) -> dict[str, str]:
     'queues': queues,
     'concurrency': concurrency,
     'loglevel': loglevel,
-    'node_name': f'{worker_type}-worker@%h',
+    # Celery %n = short hostname; avoid %h (GCP FQDN is very long)
+    'node_name': f'{worker_type}-worker@%n',
   }
 
 

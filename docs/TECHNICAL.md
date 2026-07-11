@@ -8,6 +8,7 @@
 |------|------|
 | [ENTRY_POINTS.md](./ENTRY_POINTS.md) | 程序入口、CLI / Worker 启动、目录职责、学习顺序 |
 | [SPAPI_CORE.md](./SPAPI_CORE.md) | SP-API 如何发起请求、返回结构与转换 |
+| [SPAPI_AUTH_ISOLATION.md](./SPAPI_AUTH_ISOLATION.md) | 多 Worker / 多 VPS 授权隔离、混用与账号关联风险 |
 | [SPAPI_RATE_LIMITING.md](./SPAPI_RATE_LIMITING.md) | SP-API 限流、Celery 多进程与速率协调 |
 | [OFFER_PIPELINE.md](./OFFER_PIPELINE.md) | Offer 从入队到写 ES 的逐步代码走读 |
 | [SYNC_FETCH_OFFERS.md](./SYNC_FETCH_OFFERS.md) | 同步脚本 `spapi_fetch_item_offers_sync`（不经 Celery） |
