@@ -93,6 +93,20 @@ celery -A em_celery.worker worker \
 | `spapi_catalog_items_task_send_from_es` | `...catalog_items_task_send_from_es:...` | ES |
 | `spapi_all_catalog_items_task_send_from_es` | `...all_catalog_items...:...` | 全 marketplace |
 | `spapi_fetch_item_offers_sync` | `em_celery.tools.spapi_fetch_item_offers_sync:fetch_item_offers_sync` | 同步拉 offer，**不经 Celery、不读队列**（见 [SYNC_FETCH_OFFERS.md](./SYNC_FETCH_OFFERS.md)） |
+| `telegram_test_send` | `em_celery.tools.telegram_test_send:telegram_test_send` | 用与 worker 相同的 `[telegram]` 配置发一条测试消息 |
+
+### Celery 异常 → Telegram 对照
+
+| Task | 异常 | 是否发 Telegram | 文案前缀 |
+|------|------|-----------------|----------|
+| offer | `SellingApiForbiddenException` | 是 + shutdown worker | `[SellingApiForbidden]` |
+| offer | `AuthorizationError` | 是 + shutdown worker | `[SellingApiForbidden]` |
+| offer | `exceptions_to_retry`（限流/5xx 等） | **仅**累计 Reject >250 次时 | `[SpapiItemOffersRejectedReset]` |
+| offer | `exceptions_not_retry` / 其它 | 否 | — |
+| catalog | `SellingApiForbiddenException` | 是 + shutdown worker | `[SellingApiForbidden]` |
+| catalog | `exceptions_to_retry` / 其它 | 否 | — |
+
+单元测试：`tests/tasks/test_telegram_alerts.py`。本地：`pytest tests/tasks/test_telegram_alerts.py -v`。
 
 每个 sender 文件结构相同：
 

@@ -79,6 +79,14 @@ spapi_item_offers_task_sender -b redis://localhost:6379/0 -m us asins.txt
 spapi_fetch_item_offers_sync -m us -a B0D1XD1ZV3
 ```
 
+测试生产 Telegram 告警（与 Forbidden 同一 bot/群）：
+
+```bash
+telegram_test_send
+# 或自定义文案：
+telegram_test_send -m "[TelegramTest] manual check"
+```
+
 Documentation
 -------------
 

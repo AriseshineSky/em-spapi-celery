@@ -32,6 +32,7 @@ spapi_item_offers_task_sender = "em_celery.tools.spapi_update_item_offers_task_s
 spapi_item_offers_task_send_from_es = "em_celery.tools.spapi_update_item_offers_task_send_from_es:send_spapi_item_offers_update_task"
 spapi_all_item_offers_task_send_from_es = "em_celery.tools.spapi_update_all_item_offers_task_send_from_es:send_spapi_item_offers_update_task"
 spapi_fetch_item_offers_sync = "em_celery.tools.spapi_fetch_item_offers_sync:fetch_item_offers_sync"
+telegram_test_send = "em_celery.tools.telegram_test_send:telegram_test_send"
 
 [tool.uv.sources]
 dropshipping = { path = "vendor/dropshipping", editable = true }
