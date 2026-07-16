@@ -65,10 +65,13 @@ celery -A em_celery.worker worker -Q SpapiCatalogItemsUpdate_US,SpapiItemOffersU
 spapi_catalog_items_task_sender -b redis://localhost:6379/0 -m us asins.txt
 ```
 
-从 ASIN 文件发送 offer task：
+从 ASIN / Amazon URL 文件发送 offer task（`-p 0` = critical 最高优）：
 
 ```bash
-spapi_item_offers_task_sender -b redis://localhost:6379/0 -m us asins.txt
+# 文件每行可为 URL 或裸 ASIN（裸 ASIN 用 -m）
+# https://www.amazon.com/dp/B00WW3LSUO
+# B012345678
+spapi_item_offers_task_sender -b redis://localhost:6379/0 -p 0 -f links.txt
 ```
 
 项目已有同步脚本，适合先确认凭证和 ES 写入是否正常（**不经过 Celery，不读 Redis 队列**）：
