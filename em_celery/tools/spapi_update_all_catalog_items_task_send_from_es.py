@@ -22,7 +22,7 @@ from em_celery.tools._sender_common import (
 )
 
 
-marketplaces = ["us", "uk", "de", "es", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl"]
+marketplaces = ["us", "uk", "de", "es", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl", "sg"]
 task_batch_size_by_marketplace = {"jp": 10}
 
 # load_products_by_after_search(..., key="timestamp") sorts on this field; empty indices need a mapping.

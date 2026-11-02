@@ -21,7 +21,7 @@ from em_celery.tools._sender_common import (
 )
 
 
-marketplaces = ["us", "uk", "de", "es", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl"]
+marketplaces = ["us", "uk", "de", "es", "it", "jp", "ca", "mx", "ae", "in", "fr", "pl", "be", "nl", "sg"]
 
 # load_products_by_after_search() defaults to key="timestamp"; empty/new indices need this mapped.
 ASIN_NO_OFFER_INDEX_BODY = {
