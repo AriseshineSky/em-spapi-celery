@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import os
 import time
 import datetime
 
@@ -17,7 +18,24 @@ from em_tasks.tasks.task_stats_doc import build_catalog_stats_doc
 
 TASK_STATS_INDEX = "spapi_item_catalog_task_stats"
 
+#: Migration target: one missing-ASIN index for every marketplace
+#: (``_id = "{mp}:{asin}"``, ``marketplace`` field). The legacy per-market index
+#: ``amz_products_missing_{mp}`` keeps being written until readers are switched
+#: and the history is backfilled (em-listing ``amz-merge-missing``).
+UNIFIED_MISSING_INDEX = "amz_products_missing"
+UNIFIED_MISSING_SETTINGS = {
+  "mappings": {
+    "properties": {
+      "asin": {"type": "keyword"},
+      "marketplace": {"type": "keyword"},
+      "time": {"type": "date"},
+    }
+  }
+}
+UNIFIED_MISSING_WRITE_ENV = "EM_MISSING_UNIFIED_WRITE"
+
 _catalog_task_stats_index_ready = False
+_unified_missing_index_ready = False
 
 
 def now_ms():
@@ -225,6 +243,34 @@ class SpapiUpdateCatalogItemsTask():
       self.product_service.save_products(index_name, docs)
     except Exception as e:
       logger.warning('[MissingASINSaveError] %s', missing_asins)
+      logger.exception(e)
+    self.save_unified_missing_asins(missing_asins, cur_time)
+
+  def save_unified_missing_asins(self, missing_asins, cur_time):
+    """Dual-write into the unified ``amz_products_missing`` index.
+
+    Disabled with ``EM_MISSING_UNIFIED_WRITE=0``. Failures are logged only: the
+    legacy write above is still the source of truth during the migration.
+    """
+    global _unified_missing_index_ready
+    if os.getenv(UNIFIED_MISSING_WRITE_ENV, '1') == '0':
+      return
+    if not missing_asins:
+      return
+    try:
+      if not _unified_missing_index_ready:
+        self.product_service.ensure_indice(UNIFIED_MISSING_INDEX, UNIFIED_MISSING_SETTINGS)
+        _unified_missing_index_ready = True
+      docs = [{
+        '_id': '{}:{}'.format(self.marketplace, asin),
+        'asin': asin,
+        'marketplace': self.marketplace,
+        'time': cur_time,
+      } for asin in missing_asins]
+      self.product_service.save_products(UNIFIED_MISSING_INDEX, docs)
+    except Exception as e:
+      logger.warning('[UnifiedMissingASINSaveError] marketplace=%s count=%s',
+                     self.marketplace, len(missing_asins))
       logger.exception(e)
 
   def search_catalog_items(self, spapi, marketplace, asins):
