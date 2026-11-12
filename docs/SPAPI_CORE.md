@@ -363,7 +363,7 @@ items = catalog_api.search_catalog_items(**params)
 `SpapiUpdateCatalogItemsTask.run()`：
 
 1. `ProductService.save_products('amz_products_api_{mp}_v2', docs)`
-2. 请求了但 API 未返回的 ASIN → `amz_products_missing_{mp}`
+2. 请求了但 API 未返回的 ASIN → `amz_products_missing`（`_id = "{mp}:{asin}"`）
 
 ---
 
@@ -451,7 +451,7 @@ flowchart TD
    └─ { 'B0C': { asin, title, brand, weight, categories, ... } }
 
 5. ProductService.save_products('amz_products_api_de_v2', [...])
-   缺失 ASIN → amz_products_missing_de
+   缺失 ASIN → amz_products_missing（_id = "{mp}:{asin}"）
 ```
 
 ---

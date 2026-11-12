@@ -74,7 +74,7 @@ flowchart TB
     end
 
     subgraph Storage["Elasticsearch"]
-        ES_CAT[(amz_products_api_*_v2<br/>amz_products_missing_*<br/>spapi_item_catalog_task_stats)]
+        ES_CAT[(amz_products_api_*_v2<br/>amz_products_missing<br/>spapi_item_catalog_task_stats)]
         ES_OFF[(lowest_offer_listings_*_*)]
     end
 
@@ -158,7 +158,7 @@ sequenceDiagram
     API-->>Task: Catalog Items JSON
     Task->>Task: SpapiCatalogItemsParser.parse()
     Task->>ES: bulk → amz_products_api_{mp}_v2
-    Task->>ES: 缺失 ASIN → amz_products_missing_{mp}
+    Task->>ES: 缺失 ASIN → amz_products_missing（_id = {mp}:{asin}）
     Task->>ES: 分钟级统计 → spapi_item_catalog_task_stats
 ```
 
@@ -358,7 +358,7 @@ Sender 自动写入：
 1. 调用 `Spapi.search_catalog_items`
 2. `SpapiCatalogItemsParser.parse()` 解析标题、品牌、尺寸、类目、图片等
 3. `ProductService.save_products()` → `amz_products_api_{mp}_v2`
-4. 未返回的 ASIN → `amz_products_missing_{mp}`
+4. 未返回的 ASIN → `amz_products_missing`（`_id = "{mp}:{asin}"`）
 5. 按 worker + marketplace + 分钟聚合运行指标 → `spapi_item_catalog_task_stats`
 
 ### 6.3 `SpapiUpdateItemOffersTask`
@@ -445,7 +445,7 @@ Offer 任务在累计 250 次 `Reject` 后会发 Telegram 重置通知。
 | 索引 | 写入方 | 文档内容 |
 |------|--------|----------|
 | `amz_products_api_{marketplace}_v2` | Catalog Task | 解析后的商品属性 + `time` |
-| `amz_products_missing_{marketplace}` | Catalog Task | SP-API 未返回的 ASIN |
+| `amz_products_missing` | Catalog Task | SP-API 未返回的 ASIN；全站点共用，`marketplace` 字段区分站点 |
 | `spapi_item_catalog_task_stats` | Catalog Task | 全部 marketplace 共用；`marketplace` 字段区分站点 |
 | `lowest_offer_listings_{marketplace}_{condition}` | Offer Task / EsOfferService | offer 列表 + `summary` + `time` |
 | `spapi_item_offers_task_stats` | Offer Task | 全部 marketplace 共用；`marketplace` 字段区分站点 |

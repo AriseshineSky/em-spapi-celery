@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import os
 import time
 import datetime
 
@@ -18,10 +17,11 @@ from em_tasks.tasks.task_stats_doc import build_catalog_stats_doc
 
 TASK_STATS_INDEX = "spapi_item_catalog_task_stats"
 
-#: Migration target: one missing-ASIN index for every marketplace
-#: (``_id = "{mp}:{asin}"``, ``marketplace`` field). The legacy per-market index
-#: ``amz_products_missing_{mp}`` keeps being written until readers are switched
-#: and the history is backfilled (em-listing ``amz-merge-missing``).
+#: The one missing-ASIN index for every marketplace (``_id = "{mp}:{asin}"``,
+#: ``marketplace`` field). Replaces the legacy per-market
+#: ``amz_products_missing_{mp}`` indices, which are no longer written: history was
+#: backfilled by em-listing ``amz-merge-missing`` and all readers go through
+#: ``delivery/missing_index.py::known_missing()``.
 UNIFIED_MISSING_INDEX = "amz_products_missing"
 UNIFIED_MISSING_SETTINGS = {
   "mappings": {
@@ -32,10 +32,8 @@ UNIFIED_MISSING_SETTINGS = {
     }
   }
 }
-UNIFIED_MISSING_WRITE_ENV = "EM_MISSING_UNIFIED_WRITE"
-
 _catalog_task_stats_index_ready = False
-_unified_missing_index_ready = False
+_missing_index_ready = False
 
 
 def now_ms():
@@ -85,7 +83,6 @@ class SpapiUpdateCatalogItemsTask():
     cur_time = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
     indice_name = 'amz_products_api_{}_v2'.format(self.marketplace)
-    missing_index = f'amz_products_missing_{self.marketplace}'
 
     products_info = None
     spapi_start_ms = now_ms()
@@ -135,7 +132,7 @@ class SpapiUpdateCatalogItemsTask():
     returned_asins = set(products_info.keys())
     missing_asins = [asin for asin in self.asins if asin not in returned_asins]
     if missing_asins:
-      self.save_missing_asins(missing_asins, missing_index, cur_time)
+      self.save_missing_asins(missing_asins, cur_time)
 
     for _, product_info in products_info.items():
       product_info['_id'] = product_info['asin']
@@ -237,30 +234,20 @@ class SpapiUpdateCatalogItemsTask():
         logger.warning("[CatalogTaskStatsSaveError] %s", doc)
         logger.exception("ES write failed")
 
-  def save_missing_asins(self, missing_asins, index_name, cur_time):
-    docs = [{'_id': asin, 'asin': asin, 'time': cur_time} for asin in missing_asins]
-    try:
-      self.product_service.save_products(index_name, docs)
-    except Exception as e:
-      logger.warning('[MissingASINSaveError] %s', missing_asins)
-      logger.exception(e)
-    self.save_unified_missing_asins(missing_asins, cur_time)
+  def save_missing_asins(self, missing_asins, cur_time):
+    """Record ASINs SP-API did not return into ``amz_products_missing``.
 
-  def save_unified_missing_asins(self, missing_asins, cur_time):
-    """Dual-write into the unified ``amz_products_missing`` index.
-
-    Disabled with ``EM_MISSING_UNIFIED_WRITE=0``. Failures are logged only: the
-    legacy write above is still the source of truth during the migration.
+    Failures are logged only, like every other write in this task: a missing-ASIN
+    row is a hint for the re-fetch queue, not something worth failing the catalog
+    write over.
     """
-    global _unified_missing_index_ready
-    if os.getenv(UNIFIED_MISSING_WRITE_ENV, '1') == '0':
-      return
+    global _missing_index_ready
     if not missing_asins:
       return
     try:
-      if not _unified_missing_index_ready:
+      if not _missing_index_ready:
         self.product_service.ensure_indice(UNIFIED_MISSING_INDEX, UNIFIED_MISSING_SETTINGS)
-        _unified_missing_index_ready = True
+        _missing_index_ready = True
       docs = [{
         '_id': '{}:{}'.format(self.marketplace, asin),
         'asin': asin,
@@ -269,7 +256,7 @@ class SpapiUpdateCatalogItemsTask():
       } for asin in missing_asins]
       self.product_service.save_products(UNIFIED_MISSING_INDEX, docs)
     except Exception as e:
-      logger.warning('[UnifiedMissingASINSaveError] marketplace=%s count=%s',
+      logger.warning('[MissingASINSaveError] marketplace=%s count=%s',
                      self.marketplace, len(missing_asins))
       logger.exception(e)
 
